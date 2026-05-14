@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Drake Final Wakeword</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- JAA S IFRAME -->
+  <script src="https://8x8.vc/vpaas-magic-cookie-460c6d1d36e94dae9572a3ca814c7b08/external_api.js"></script>
+
+  <!-- PORCUPINE -->
+  <script src="https://cdn.jsdelivr.net/npm/@picovoice/porcupine-web/dist/iife/index.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #05070d;
+      color: white;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #meet {
+      width: 100vw;
+      height: 56vh;
+      background: #000;
+    }
+
+    #panel {
+      height: 44vh;
+      background: #0b1220;
+      padding: 10px;
+      box-sizing: border-box;
+      overflow: auto;
+    }
+
+    button {
+      padding: 11px 15px;
+      border: none;
+      border-radius: 10px;
+      background: #2d6cdf;
+      color: white;
+      font-weight: 900;
+      margin: 4px;
+      cursor: pointer;
+    }
+
+    .green { background: #009b5a; }
+    .red { background: #b91c1c; }
+    .gray { background: #333844; }
+
+    #room {
+      color: #00ff88;
+      font-weight: 900;
+      word-break: break-all;
+      margin: 8px 0;
+      font-size: 13px;
+    }
+
+    #status {
+      color: #9fd3ff;
+      font-weight: 900;
+      margin: 8px 0;
+    }
+
+    #debug {
+      background: #000;
+      color: #00ff88;
+      height: 170px;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 10px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="meet"></div>
+
+<div id="panel">
+  <button onclick="joinCall()">JOIN CALL</button>
+  <button class="gray" onclick="copyInvite()">COPY INVITE</button>
+  <button class="green" onclick="startWakeword()">START WAKEWORD</button>
+  <button class="red" onclick="stopWakeword()">STOP</button>
+  <button class="gray" onclick="speak('Drake is alive')">TEST TTS</button>
+
+  <div id="room"></div>
+  <div id="status">idle</div>
+  <pre id="debug"></pre>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+
+const PICOVOICE_ACCESS_KEY = "8LcymlmIi9K8+h25/5bGVTTC997LahCxBkQ4NwdYxXCa6hp6j9QDVA==";
+
+const APP_ID = "vpaas-magic-cookie-460c6d1d36e94dae9572a3ca814c7b08";
+const ROOM_NAME = "drakemainroom";
+const INVITE_URL = `https://8x8.vc/${APP_ID}/${ROOM_NAME}`;
+
+/* ================= STATE ================= */
+
+let api = null;
+
+let porcupine = null;
+let audioContext = null;
+let sourceNode = null;
+let processorNode = null;
+let tabStream = null;
+
+let wakeRunning = false;
+let processing = false;
+let pcmQueue = [];
+
+/* ================= UI ================= */
+
+document.getElementById("room").innerText = "INVITE: " + INVITE_URL;
+
+function log(x) {
+  const box = document.getElementById("debug");
+  box.textContent += `[${new Date().toLocaleTimeString()}] ${x}\n`;
+  box.scrollTop = box.scrollHeight;
+  console.log(x);
+}
+
+function setStatus(x) {
+  document.getElementById("status").innerText = x;
+}
+
+function speak(text) {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = 1;
+  speechSynthesis.speak(u);
+  log("TTS -> " + text);
+}
+
+async function copyInvite() {
+  try {
+    await navigator.clipboard.writeText(INVITE_URL);
+    alert("Copied:\n\n" + INVITE_URL);
+    log("Invite copied");
+  } catch (e) {
+    prompt("Copy this:", INVITE_URL);
+  }
+}
+
+/* ================= JITSI CALL ================= */
+
+function joinCall() {
+  if (api) {
+    log("Visible call already joined");
+    return;
+  }
+
+  api = new JitsiMeetExternalAPI("8x8.vc", {
+    roomName: `${APP_ID}/${ROOM_NAME}`,
+    parentNode: document.querySelector("#meet"),
+    width: "100%",
+    height: "100%",
+    userInfo: {
+      displayName: "Main Drake"
+    },
+    configOverwrite: {
+      startWithAudioMuted: false,
+      startWithVideoMuted: true,
+      prejoinPageEnabled: false,
+      disableDeepLinking: true
+    },
+    interfaceConfigOverwrite: {
+      SHOW_JITSI_WATERMARK: false,
+      SHOW_WATERMARK_FOR_GUESTS: false
+    }
+  });
+
+  api.addEventListener("videoConferenceJoined", () => {
+    log("VISIBLE CALL JOINED ✅");
+    setStatus("call active");
+  });
+
+  api.addEventListener("participantJoined", () => {
+    log("Participant joined iframe call ✅");
+  });
+
+  api.addEventListener("participantLeft", () => {
+    log("Participant left");
+  });
+}
+
+/* ================= PORCUPINE WAKEWORD FROM TAB AUDIO ================= */
+
+async function startWakeword() {
+  try {
+    if (wakeRunning) {
+      log("Wakeword already running");
+      return;
+    }
+
+    if (PICOVOICE_ACCESS_KEY.includes("PUT_")) {
+      log("Add Picovoice access key first");
+      setStatus("missing Picovoice key");
+      return;
+    }
+
+    setStatus("choose THIS TAB + share audio");
+    log("Opening tab audio capture...");
+    log("IMPORTANT: choose THIS TAB and enable SHARE TAB AUDIO.");
+
+    tabStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+
+    const audioTracks = tabStream.getAudioTracks();
+
+    if (!audioTracks.length) {
+      log("No tab audio track. You forgot Share Tab Audio.");
+      setStatus("no tab audio");
+      stopTracksOnly();
+      return;
+    }
+
+    log("Tab audio captured ✅");
+
+    setStatus("loading Porcupine...");
+    log("Loading Porcupine...");
+
+    if (!PorcupineWeb || !PorcupineWeb.Porcupine) {
+      log("PorcupineWeb.Porcupine not found. SDK loaded differently.");
+      setStatus("porcupine api missing");
+      return;
+    }
+
+    porcupine = await PorcupineWeb.Porcupine.create(
+      PICOVOICE_ACCESS_KEY,
+      [
+        {
+          publicPath: "./Drake.ppn",
+          label: "drake",
+          sensitivity: 0.75
+        }
+      ],
+      {
+        publicPath: "./porcupine_params.pv"
+      }
+    );
+
+    log("Porcupine loaded ✅");
+    log("sampleRate: " + porcupine.sampleRate);
+    log("frameLength: " + porcupine.frameLength);
+
+    await startAudioProcessing(tabStream);
+
+    wakeRunning = true;
+    setStatus("listening for Drake from second phone...");
+    log("DRAKE IS LISTENING TO JITSI TAB AUDIO ✅");
+
+  } catch (e) {
+    log("Wakeword start error: " + e);
+    setStatus("wakeword failed");
+  }
+}
+
+async function startAudioProcessing(stream) {
+  audioContext = new AudioContext({
+    sampleRate: porcupine.sampleRate || 16000
+  });
+
+  await audioContext.resume();
+
+  sourceNode = audioContext.createMediaStreamSource(stream);
+
+  processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+
+  sourceNode.connect(processorNode);
+
+  const silentGain = audioContext.createGain();
+  silentGain.gain.value = 0;
+
+  processorNode.connect(silentGain);
+  silentGain.connect(audioContext.destination);
+
+  const frameLength = porcupine.frameLength;
+  let sampleBuffer = [];
+
+  processorNode.onaudioprocess = (e) => {
+    if (!wakeRunning || !porcupine) return;
+
+    const input = e.inputBuffer.getChannelData(0);
+
+    for (let i = 0; i < input.length; i++) {
+      let s = Math.max(-1, Math.min(1, input[i]));
+      sampleBuffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
+    }
+
+    while (sampleBuffer.length >= frameLength) {
+      const frame = sampleBuffer.slice(0, frameLength);
+      sampleBuffer = sampleBuffer.slice(frameLength);
+      pcmQueue.push(new Int16Array(frame));
+    }
+
+    processQueue();
+  };
+
+  log("Audio processor ready ✅");
+}
+
+async function processQueue() {
+  if (processing || !porcupine) return;
+
+  processing = true;
+
+  try {
+    while (pcmQueue.length) {
+      const frame = pcmQueue.shift();
+      const result = await porcupine.process(frame);
+
+      if (result && result.label) {
+        log("WAKE DETECTED -> " + result.label);
+        setStatus("WAKE DETECTED");
+        speak("Yes?");
+      } else if (result && typeof result === "string") {
+        log("WAKE DETECTED -> " + result);
+        setStatus("WAKE DETECTED");
+        speak("Yes?");
+      }
+    }
+  } catch (e) {
+    log("Porcupine process error: " + e);
+  }
+
+  processing = false;
+}
+
+async function stopWakeword() {
+  wakeRunning = false;
+
+  try {
+    if (processorNode) processorNode.disconnect();
+    if (sourceNode) sourceNode.disconnect();
+    if (audioContext) await audioContext.close();
+
+    if (porcupine) {
+      if (porcupine.release) await porcupine.release();
+      else if (porcupine.delete) await porcupine.delete();
+    }
+
+    stopTracksOnly();
+
+  } catch (e) {
+    log("Stop error: " + e);
+  }
+
+  processorNode = null;
+  sourceNode = null;
+  audioContext = null;
+  porcupine = null;
+  pcmQueue = [];
+  processing = false;
+
+  log("Wakeword stopped");
+  setStatus("stopped");
+}
+
+function stopTracksOnly() {
+  if (tabStream) {
+    tabStream.getTracks().forEach(t => t.stop());
+    tabStream = null;
+  }
+}
+
+/* ================= BOOT ================= */
+
+log("Loaded.");
+log("1. JOIN CALL");
+log("2. Login if needed");
+log("3. COPY INVITE and join from second phone");
+log("4. START WAKEWORD");
+log("5. Select THIS TAB + Share tab audio");
+setStatus("ready");
+</script>
+
+</body>
+</html>
