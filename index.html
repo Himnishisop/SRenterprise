@@ -241,19 +241,30 @@ async function startWakeword() {
       return;
     }
 
-    porcupine = await PorcupineWeb.Porcupine.create(
-      PICOVOICE_ACCESS_KEY,
-      [
-        {
-          publicPath: "./Drake.ppn",
-          label: "drake",
-          sensitivity: 0.75
-        }
-      ],
-      {
-        publicPath: "./porcupine_params.pv"
-      }
-    );
+ porcupine = await PorcupineWeb.Porcupine.create(
+  PICOVOICE_ACCESS_KEY,
+  [
+    {
+      publicPath: "./Drake.ppn",
+      label: "drake",
+      sensitivity: 0.75,
+      customWritePath: "drake_wakeword",
+      forceWrite: true,
+      version: 1
+    }
+  ],
+  (detection) => {
+    log("WAKE DETECTED -> " + JSON.stringify(detection));
+    setStatus("WAKE DETECTED");
+    speak("Yes?");
+  },
+  {
+    publicPath: "./porcupine_params.pv",
+    customWritePath: "porcupine_params",
+    forceWrite: true,
+    version: 1
+  }
+);
 
     log("Porcupine loaded ✅");
     log("sampleRate: " + porcupine.sampleRate);
