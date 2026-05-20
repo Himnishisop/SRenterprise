@@ -1,13 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Drake Ultimate AI</title>
+  <title>Drake Tiny Wake Trainer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <script src="https://8x8.vc/libs/lib-jitsi-meet.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.7/dist/vosk.js"></script>
-  <script src="https://js.puter.com/v2/"></script>
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
 
   <style>
     body{
@@ -15,9 +12,6 @@
       background:#05070d;
       color:white;
       font-family:Arial;
-    }
-
-    #panel{
       padding:14px;
     }
 
@@ -30,6 +24,7 @@
       font-weight:900;
       margin:5px;
       cursor:pointer;
+      font-size:14px;
     }
 
     .green{background:#009b5a}
@@ -37,17 +32,10 @@
     .gray{background:#333844}
 
     #wake{
-      font-size:26px;
+      font-size:28px;
       font-weight:900;
       color:#ff4444;
-      margin:8px 0;
-    }
-
-    #room{
-      color:#00ff88;
-      font-weight:900;
-      word-break:break-all;
-      margin:10px 0;
+      margin:12px 0;
     }
 
     #status{
@@ -59,130 +47,99 @@
     #debug{
       background:#000;
       color:#00ff88;
-      height:38vh;
+      height:45vh;
       overflow:auto;
       padding:12px;
       border-radius:10px;
-      font-family:Consolas,monospace;
+      font-family:Consolas;
       font-size:12px;
       white-space:pre-wrap;
     }
 
-    #player{
-      width:100%;
-      height:260px;
-      background:#000;
-      margin-top:10px;
-      border-radius:10px;
-      overflow:hidden;
+    input{
+      margin:8px 0;
+      display:block;
     }
   </style>
 </head>
 
 <body>
 
-<div id="panel">
+<h2>Drake Tiny Wake Trainer</h2>
 
-  <button onclick="joinMainDrake()">JOIN MAIN DRAKE</button>
+<button onclick="initMic()">INIT MIC</button>
 
-  <button class="gray" onclick="copyInvite()">
-    COPY INVITE
-  </button>
+<button class="green" onclick="recordSample('drake')">
+  RECORD DRAKE SAMPLE
+</button>
 
-  <button class="green" onclick="startDrake()">
-    START DRAKE
-  </button>
+<button class="gray" onclick="recordSample('noise')">
+  RECORD NOISE SAMPLE
+</button>
 
-  <button class="red" onclick="stopDrake()">
-    STOP
-  </button>
+<button onclick="trainModel()">TRAIN</button>
 
-  <button class="gray" onclick="testInjectedTTS()">
-    TEST VOICE
-  </button>
+<button class="green" onclick="startDetect()">
+  START DETECT
+</button>
 
-  <div id="wake">NOT DETECTED</div>
+<button class="red" onclick="stopDetect()">
+  STOP
+</button>
 
-  <div id="room"></div>
+<br><br>
 
-  <div id="status">idle</div>
+<button onclick="saveLocal()">
+  SAVE LOCAL
+</button>
 
-  <div id="player"></div>
+<button onclick="loadLocal()">
+  LOAD LOCAL
+</button>
 
-  <pre id="debug"></pre>
+<button onclick="downloadModel()">
+  DOWNLOAD MODEL FILES
+</button>
 
-</div>
+<input
+  type="file"
+  id="modelFiles"
+  multiple
+  accept=".json,.bin"
+/>
+
+<button onclick="loadModelFiles()">
+  LOAD MODEL FILES
+</button>
+
+<div id="wake">NOT DETECTED</div>
+
+<div id="status">idle</div>
+
+<pre id="debug"></pre>
 
 <script>
 
-/* ================= CONFIG ================= */
+let stream;
+let audioCtx;
+let analyser;
+let data;
 
-const APP_ID =
-"vpaas-magic-cookie-460c6d1d36e94dae9572a3ca814c7b08";
-
-const ROOM =
-"drakemainroom";
-
-const INVITE_URL =
-`https://8x8.vc/${APP_ID}/${ROOM}`;
-
-const JWT_TOKEN =
-"eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDYwYzZkMWQzNmU5NGRhZTk1NzJhM2NhODE0YzdiMDgvOWZkYjFmLVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3Nzg4NDAyMjMsImV4cCI6MTc3ODg0NzQyMywibmJmIjoxNzc4ODQwMjE4LCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDYwYzZkMWQzNmU5NGRhZTk1NzJhM2NhODE0YzdiMDgiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6dHJ1ZSwibmFtZSI6Im11c2ljYWxseWhpbW5pc2h2ZXJtYSIsImlkIjoiZ29vZ2xlLW9hdXRoMnwxMDE2NjMyMTY5OTgyNjQxODI2MTEiLCJhdmF0YXIiOiIiLCJlbWFpbCI6Im11c2ljYWxseWhpbW5pc2h2ZXJtYUBnbWFpbC5jb20ifX0sInJvb20iOiIqIn0.IWxGZ9vYvsR-8FVqiJQbHxujhMFHDEd7SZG5pj5r6eUONWfDZjr8jeMWjZqmTH2TrY3gv-XrQMFcA92lqWt9RL-6eiv9sJw7BiksHYaKIq1Zza9WyGy8ueH73NEeZB3IkRZ1E2SIGdqEsfYlhBrdWwYJDdpz1dVewUuadyMfEW9SEmnkRB4eqdgt0rTuu5P8gmtiaWsOjOtopdLBuqr-jlhIBnyjE5MvNWZexwJrP4o2V_2GazIkJgoQPzS4ib7yUlWuRqbUGRjWJkcolW39XYM4BqArY7U3y98j2bUZnRmOO7r3RN46fv22vHERwWGEXxh5BqPuyINhn7vs1YxZrg";
-
-const MISTRAL_API_KEY =
-"sb4uBrl67jk1RV2gg1gLZqh2lkoSq3Py";
-
-const YT_API_KEY =
-"PASTE_YOUTUBE_API_KEY_HERE";
-
-const WAKE_WORDS = [
-  "drake",
-  "drink",
-  "break",
-  "dark",
-  "dre",
-  "greek",
-  "three"
-];
-
-/* ================= STATE ================= */
-
-let connection = null;
-let conference = null;
-
-let localTracks = [];
-let localAudioTrack = null;
-let remoteAudioStream = null;
+let samples = [];
 
 let model = null;
-let recognizer = null;
 
-let wakeCtx = null;
-let wakeSource = null;
-let wakeNode = null;
+let detecting = false;
 
-let running = false;
-let aiBusy = false;
-let lastWake = 0;
+const FEATURE_SIZE = 64;
 
-let ttsCtx = null;
-let ttsDestination = null;
+const RECORD_MS = 900;
 
-let ytPlayer = null;
-let ytReady = false;
-let lastVideoId = null;
-
-/* ================= UI ================= */
-
-room.innerText =
-"Second phone invite: " + INVITE_URL;
+const THRESHOLD = 0.82;
 
 function log(x){
-  debug.textContent +=
-  `[${new Date().toLocaleTimeString()}] ${x}\n`;
-
+  debug.textContent += `[${new Date().toLocaleTimeString()}] ${x}\n`;
   debug.scrollTop = debug.scrollHeight;
-
   console.log(x);
 }
 
@@ -190,1107 +147,391 @@ function setStatus(x){
   status.innerText = x;
 }
 
-function setWake(ok){
-  wake.innerText =
-    ok
-    ? "DRAKE DETECTED ✅"
-    : "NOT DETECTED";
+function setWake(ok, score=0){
 
-  wake.style.color =
-    ok ? "#00ff88" : "#ff4444";
+  wake.innerText = ok
+    ? `DRAKE DETECTED ✅ ${score.toFixed(2)}`
+    : `NOT DETECTED ${score.toFixed(2)}`;
+
+  wake.style.color = ok
+    ? "#00ff88"
+    : "#ff4444";
 }
 
-/* ================= MEMORY ================= */
+async function initMic(){
 
-function getMemoryText(){
-  return localStorage.getItem("DRAKE_MEMORY") || "";
-}
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio:{
+      echoCancellation:false,
+      noiseSuppression:false,
+      autoGainControl:false
+    }
+  });
 
-function addMemory(info){
+  audioCtx = new AudioContext();
 
-  const old =
-    getMemoryText();
+  const src =
+    audioCtx.createMediaStreamSource(stream);
 
-  const updated =
-    (old + "\n- " + info).trim();
+  analyser = audioCtx.createAnalyser();
 
-  localStorage.setItem(
-    "DRAKE_MEMORY",
-    updated
+  analyser.fftSize = 2048;
+
+  data = new Float32Array(
+    analyser.frequencyBinCount
   );
 
-  return updated;
+  src.connect(analyser);
+
+  log("Mic ready ✅");
+
+  setStatus("mic ready");
 }
 
-/* ================= PROMPT ================= */
+async function recordSample(label){
 
-function buildSystemPrompt(){
-
-return `
-You are Drake, a smart realtime AI assistant inside a live voice call.
-
-User memory:
-${getMemoryText() || "No saved memory yet."}
-
-Reply ONLY valid JSON.
-
-Formats:
-
-Answer:
-{"type":"answer","response":"reply"}
-
-Remember:
-{"type":"remember","memory":"fact","response":"reply"}
-
-Play music:
-{"type":"music","action":"play","query":"song"}
-
-Pause:
-{"type":"music","action":"pause"}
-
-Resume:
-{"type":"music","action":"resume"}
-
-Stop:
-{"type":"music","action":"stop"}
-
-Weather:
-{"type":"weather","location":"Mumbai"}
-
-Rules:
-- If user says remember/save/note something, return remember JSON.
-- Keep replies short.
-- No markdown.
-`;
-
-}
-
-/* ================= INVITE ================= */
-
-async function copyInvite(){
-
-  try{
-
-    await navigator.clipboard.writeText(
-      INVITE_URL
-    );
-
-    alert("Copied:\n" + INVITE_URL);
-
-  }catch(e){
-
-    prompt("Copy:", INVITE_URL);
-
-  }
-
-}
-
-/* ================= JITSI ================= */
-
-function buildOptions(){
-
-  return {
-
-    hosts: {
-      domain: "8x8.vc",
-      muc:
-      `conference.${APP_ID}.8x8.vc`,
-      focus: "focus.8x8.vc"
-    },
-
-    serviceUrl:
-    `wss://8x8.vc/${APP_ID}/xmpp-websocket?room=${ROOM}`,
-
-    websocketKeepAliveUrl:
-    `https://8x8.vc/${APP_ID}/_unlock?room=${ROOM}`,
-
-    clientNode:
-    "http://jitsi.org/jitsimeet"
-
-  };
-
-}
-
-async function joinMainDrake(){
-
-  if(conference){
-    log("Already joined");
+  if(!analyser){
+    alert("Init mic first");
     return;
   }
 
-  JitsiMeetJS.init({
-    disableAudioLevels:false
+  setStatus("recording " + label);
+
+  log("Recording " + label + "...");
+
+  const feat = await captureFeature();
+
+  samples.push({
+    label,
+    feature: feat
   });
 
-  JitsiMeetJS.setLogLevel(
-    JitsiMeetJS.logLevels.ERROR
+  log(
+    `Saved ${label} sample. Total: ${samples.length}`
   );
 
-  connection =
-    new JitsiMeetJS.JitsiConnection(
-      null,
-      JWT_TOKEN,
-      buildOptions()
-    );
-
-  connection.addEventListener(
-    JitsiMeetJS.events.connection.CONNECTION_ESTABLISHED,
-    onConnectionSuccess
-  );
-
-  connection.addEventListener(
-    JitsiMeetJS.events.connection.CONNECTION_FAILED,
-    err => {
-      log("Connection failed: " + err);
-    }
-  );
-
-  connection.connect();
-
-  log("Connecting Drake...");
-  setStatus("connecting");
-
+  setStatus(`saved ${label}`);
 }
 
-async function onConnectionSuccess(){
+async function captureFeature(){
 
-  log("Connection established ✅");
+  const frames = [];
 
-  conference =
-    connection.initJitsiConference(
-      ROOM,
-      { openBridgeChannel:true }
-    );
+  const start = Date.now();
 
-  conference.on(
-    JitsiMeetJS.events.conference.CONFERENCE_JOINED,
-    async () => {
+  while(Date.now() - start < RECORD_MS){
 
-      log("Conference joined ✅");
+    analyser.getFloatFrequencyData(data);
 
-      setStatus(
-        "joined, waiting second phone"
-      );
+    const feature =
+      downsampleFFT(data, FEATURE_SIZE);
 
-      await setupSilentTTSInjection();
+    frames.push(feature);
 
-    }
-  );
-
-  conference.on(
-    JitsiMeetJS.events.conference.USER_JOINED,
-    () => {
-      log("Second phone joined ✅");
-    }
-  );
-
-  conference.on(
-    JitsiMeetJS.events.conference.TRACK_ADDED,
-    onTrackAdded
-  );
-
-  conference.join();
-
-  try{
-
-    localTracks =
-      await JitsiMeetJS.createLocalTracks({
-        devices:["audio"]
-      });
-
-    for(const track of localTracks){
-
-      localAudioTrack = track;
-
-      await conference.addTrack(track);
-
-      log("Local Drake track added");
-
-    }
-
-  }catch(e){
-
-    log("Local track error: " + e);
-
+    await wait(50);
   }
 
+  return averageFrames(frames);
 }
 
-function onTrackAdded(track){
+function downsampleFFT(arr, size){
 
-  if(track.isLocal()) return;
+  const out = new Array(size).fill(0);
 
-  if(track.getType() === "audio"){
+  const step =
+    Math.floor(arr.length / size);
 
-    const audio =
-      document.createElement("audio");
+  for(let i=0;i<size;i++){
 
-    audio.autoplay = true;
-    audio.controls = true;
+    let sum = 0;
 
-    document.body.appendChild(audio);
+    for(let j=0;j<step;j++){
 
-    track.attach(audio);
+      let v = arr[i * step + j];
 
-    audio.play();
+      if(!isFinite(v)) v = -100;
 
-    if(typeof track.getOriginalStream === "function"){
+      sum += v;
+    }
 
-      remoteAudioStream =
-        track.getOriginalStream();
+    let avg = sum / step;
+
+    out[i] =
+      Math.max(
+        0,
+        Math.min(1, (avg + 100) / 100)
+      );
+  }
+
+  return out;
+}
+
+function averageFrames(frames){
+
+  const out =
+    new Array(FEATURE_SIZE).fill(0);
+
+  for(const f of frames){
+
+    for(let i=0;i<FEATURE_SIZE;i++){
+      out[i] += f[i];
+    }
+  }
+
+  for(let i=0;i<FEATURE_SIZE;i++){
+    out[i] /= frames.length;
+  }
+
+  return out;
+}
+
+async function trainModel(){
+
+  const drakeCount =
+    samples.filter(s=>s.label==="drake").length;
+
+  const noiseCount =
+    samples.filter(s=>s.label==="noise").length;
+
+  if(drakeCount < 5 || noiseCount < 5){
+
+    alert(
+      "Record at least 5 Drake and 5 Noise samples"
+    );
+
+    return;
+  }
+
+  setStatus("training");
+
+  log("Training tiny model...");
+
+  const xs =
+    tf.tensor2d(samples.map(s=>s.feature));
+
+  const ys =
+    tf.tensor2d(
+      samples.map(s =>
+        s.label==="drake" ? [1] : [0]
+      )
+    );
+
+  model = tf.sequential();
+
+  model.add(tf.layers.dense({
+    inputShape:[FEATURE_SIZE],
+    units:32,
+    activation:"relu"
+  }));
+
+  model.add(tf.layers.dropout({
+    rate:0.2
+  }));
+
+  model.add(tf.layers.dense({
+    units:16,
+    activation:"relu"
+  }));
+
+  model.add(tf.layers.dense({
+    units:1,
+    activation:"sigmoid"
+  }));
+
+  model.compile({
+    optimizer:tf.train.adam(0.01),
+    loss:"binaryCrossentropy",
+    metrics:["accuracy"]
+  });
+
+  await model.fit(xs, ys, {
+    epochs:45,
+    shuffle:true,
+    callbacks:{
+      onEpochEnd:(epoch, logs)=>{
+
+        if(epoch % 10 === 0){
+
+          log(
+            `epoch ${epoch} loss=${logs.loss.toFixed(3)} acc=${(logs.acc || logs.accuracy).toFixed(3)}`
+          );
+        }
+      }
+    }
+  });
+
+  xs.dispose();
+  ys.dispose();
+
+  log("Training done ✅");
+
+  setStatus("trained");
+}
+
+async function startDetect(){
+
+  if(!model){
+    alert("Train or load model first");
+    return;
+  }
+
+  detecting = true;
+
+  setStatus("detecting");
+
+  log("Detection started");
+
+  while(detecting){
+
+    const feat =
+      await captureFeature();
+
+    const pred =
+      model.predict(tf.tensor2d([feat]));
+
+    const score =
+      (await pred.data())[0];
+
+    pred.dispose();
+
+    if(score > THRESHOLD){
+
+      setWake(true, score);
+
+      log(
+        "WAKE ✅ score=" +
+        score.toFixed(3)
+      );
 
     }else{
 
-      remoteAudioStream =
-        new MediaStream([track.getTrack()]);
-
+      setWake(false, score);
     }
 
-    log("Second phone mic captured ✅");
-
-    setStatus("remote audio ready");
-
+    await wait(120);
   }
-
 }
 
-/* ================= TTS INJECTION ================= */
+function stopDetect(){
 
-async function setupSilentTTSInjection(){
-
-  if(!localAudioTrack){
-
-    setTimeout(
-      setupSilentTTSInjection,
-      500
-    );
-
-    return;
-  }
-
-  ttsCtx =
-    new AudioContext();
-
-  ttsDestination =
-    ttsCtx.createMediaStreamDestination();
-
-  const osc =
-    ttsCtx.createOscillator();
-
-  const gain =
-    ttsCtx.createGain();
-
-  gain.gain.value = 0;
-
-  osc.connect(gain);
-
-  gain.connect(ttsDestination);
-
-  osc.start();
-
-  const effect = {
-
-    isEnabled: () => true,
-
-    startEffect: () =>
-      ttsDestination.stream,
-
-    stopEffect: () => {}
-
-  };
-
-  await localAudioTrack.setEffect(effect);
-
-  log("Voice injection ready ✅");
-
-}
-
-/* ================= TTS ================= */
-
-async function playInjectedTTS(text){
-
-  try{
-
-    aiBusy = true;
-
-    setStatus("speaking");
-
-    log("DRAKE -> " + text);
-
-    const audio =
-      await puter.ai.txt2speech(text);
-
-    const url =
-      audio.src ||
-      audio.currentSrc;
-
-    const res =
-      await fetch(url);
-
-    const arrayBuffer =
-      await res.arrayBuffer();
-
-    const audioBuffer =
-      await ttsCtx.decodeAudioData(
-        arrayBuffer
-      );
-
-    const src =
-      ttsCtx.createBufferSource();
-
-    src.buffer = audioBuffer;
-
-    src.connect(ttsDestination);
-
-    src.onended = () => {
-
-      aiBusy = false;
-
-      setStatus(
-        "listening for Drake"
-      );
-
-    };
-
-    src.start();
-
-  }catch(e){
-
-    aiBusy = false;
-
-    log("TTS error: " + e);
-
-  }
-
-}
-
-async function testInjectedTTS(){
-
-  await playInjectedTTS(
-    "Drake is alive and connected."
-  );
-
-}
-
-/* ================= VOSK ================= */
-
-async function startDrake(){
-
-  if(running){
-    log("Already running");
-    return;
-  }
-
-  if(!remoteAudioStream){
-
-    log("No second phone audio");
-
-    return;
-  }
-
-  if(!model){
-
-    log("Loading wake model...");
-
-    model =
-      await Vosk.createModel(
-        "model.tar.gz"
-      );
-
-  }
-
-  recognizer =
-    new model.KaldiRecognizer(16000);
-
-  recognizer.on(
-    "partialresult",
-    msg => {
-
-      if(aiBusy) return;
-
-      const t =
-      (msg.result.partial || "")
-      .toLowerCase()
-      .trim();
-
-      if(!t) return;
-
-      if(hasWake(t)){
-
-        onWakeDetected();
-
-      }
-
-    }
-  );
-
-  recognizer.on(
-    "result",
-    msg => {
-
-      if(aiBusy) return;
-
-      const t =
-      (msg.result.text || "")
-      .toLowerCase()
-      .trim();
-
-      if(!t) return;
-
-      if(hasWake(t)){
-
-        onWakeDetected();
-
-      }
-
-    }
-  );
-
-  wakeCtx =
-    new AudioContext();
-
-  wakeSource =
-    wakeCtx.createMediaStreamSource(
-      remoteAudioStream
-    );
-
-  wakeNode =
-    wakeCtx.createScriptProcessor(
-      4096,
-      1,
-      1
-    );
-
-  wakeNode.onaudioprocess =
-    e => {
-
-      if(
-        running &&
-        recognizer &&
-        !aiBusy
-      ){
-
-        recognizer.acceptWaveform(
-          e.inputBuffer
-        );
-
-      }
-
-    };
-
-  wakeSource.connect(wakeNode);
-
-  const silentGain =
-    wakeCtx.createGain();
-
-  silentGain.gain.value = 0;
-
-  wakeNode.connect(silentGain);
-
-  silentGain.connect(
-    wakeCtx.destination
-  );
-
-  running = true;
-
-  log("Wake detection active ✅");
-
-  setStatus("Listening for Drake");
-
-}
-
-function hasWake(t){
-
-  return WAKE_WORDS.some(
-    w => t.includes(w)
-  );
-
-}
-
-function onWakeDetected(){
-
-  const now =
-    Date.now();
-
-  if(now - lastWake < 6000)
-    return;
-
-  lastWake = now;
-
-  aiBusy = true;
-
-  setWake(true);
-
-  log("WAKE DETECTED ✅");
-
-  setTimeout(
-    handleCommandAfterWake,
-    300
-  );
-
-}
-
-/* ================= COMMAND ================= */
-
-async function handleCommandAfterWake(){
-
-  try{
-
-    await playInjectedTTS("Yes?");
-
-    await wait(900);
-
-    log("Recording command...");
-
-    const blob =
-      await recordAudio(
-        remoteAudioStream,
-        5500
-      );
-
-    log(
-      "Sending command to Puter STT..."
-    );
-
-    let text = "";
-
-    try{
-
-      const audioBlob =
-        new Blob(
-          [blob],
-          {type:"audio/webm"}
-        );
-
-      const result =
-        await Promise.race([
-
-          puter.ai.speech2txt(
-            audioBlob,
-            {
-              model:
-              "gpt-4o-transcribe"
-            }
-          ),
-
-          wait(25000).then(() => {
-            throw new Error(
-              "Puter STT timeout"
-            );
-          })
-
-        ]);
-
-      text =
-        String(
-          result.text ||
-          result ||
-          ""
-        ).trim();
-
-    }catch(e){
-
-      log("Puter STT error: " + e);
-
-      await playInjectedTTS(
-        "I could not transcribe that."
-      );
-
-      setWake(false);
-
-      return;
-
-    }
-
-    log("COMMAND -> " + text);
-
-    if(!text){
-
-      await playInjectedTTS(
-        "I did not catch that."
-      );
-
-      setWake(false);
-
-      return;
-
-    }
-
-    await askMistral(text);
-
-    setWake(false);
-
-  }catch(e){
-
-    log("Command error: " + e);
-
-  }
-
-}
-
-/* ================= RECORD ================= */
-
-function recordAudio(stream,ms){
-
-  return new Promise(
-    (resolve,reject) => {
-
-      const chunks = [];
-
-      let mime =
-      "audio/webm;codecs=opus";
-
-      const audioOnly =
-        new MediaStream(
-          stream.getAudioTracks()
-        );
-
-      const rec =
-        new MediaRecorder(
-          audioOnly,
-          {mimeType:mime}
-        );
-
-      rec.ondataavailable =
-        e => {
-
-          if(
-            e.data &&
-            e.data.size > 0
-          ){
-
-            chunks.push(e.data);
-
-          }
-
-        };
-
-      rec.onerror =
-        e => reject(e.error);
-
-      rec.onstop =
-        () => {
-
-          resolve(
-            new Blob(
-              chunks,
-              {type:mime}
-            )
-          );
-
-        };
-
-      rec.start();
-
-      setTimeout(
-        () => {
-
-          if(
-            rec.state !== "inactive"
-          ){
-
-            rec.stop();
-
-          }
-
-        },
-        ms
-      );
-
-    }
-  );
-
-}
-
-/* ================= MISTRAL ================= */
-
-async function askMistral(userText){
-
-  try{
-
-    setStatus("thinking");
-
-    log("ASK -> " + userText);
-
-    const res =
-      await fetch(
-        "https://api.mistral.ai/v1/chat/completions",
-        {
-
-          method:"POST",
-
-          headers:{
-            "Authorization":
-            "Bearer " +
-            MISTRAL_API_KEY,
-
-            "Content-Type":
-            "application/json"
-          },
-
-          body:JSON.stringify({
-
-            model:
-            "mistral-large-latest",
-
-            messages:[
-              {
-                role:"system",
-                content:
-                buildSystemPrompt()
-              },
-              {
-                role:"user",
-                content:userText
-              }
-            ],
-
-            temperature:0.25
-
-          })
-
-        }
-      );
-
-    const data =
-      await res.json();
-
-    let raw =
-      data?.choices?.[0]
-      ?.message?.content || "{}";
-
-    raw =
-      raw
-      .replace(/```json/gi,"")
-      .replace(/```/g,"")
-      .trim();
-
-    log("AI JSON -> " + raw);
-
-    const obj =
-      JSON.parse(raw);
-
-    await handleAI(obj);
-
-  }catch(e){
-
-    log("AI fail: " + e);
-
-    await playInjectedTTS(
-      "Something went wrong."
-    );
-
-  }
-
-}
-
-/* ================= AI HANDLER ================= */
-
-async function handleAI(obj){
-
-  if(obj.type === "answer"){
-
-    await playInjectedTTS(
-      obj.response || "Okay."
-    );
-
-    return;
-  }
-
-  if(obj.type === "remember"){
-
-    addMemory(obj.memory);
-
-    await playInjectedTTS(
-      obj.response ||
-      "I will remember that."
-    );
-
-    return;
-  }
-
-  if(obj.type === "music"){
-
-    if(obj.action === "play")
-      await playMusic(obj.query);
-
-    if(obj.action === "pause")
-      pauseMusic();
-
-    if(obj.action === "resume")
-      resumeMusic();
-
-    if(obj.action === "stop")
-      stopMusic();
-
-    return;
-  }
-
-  if(obj.type === "weather"){
-
-    await getWeather(
-      obj.location || "Mumbai"
-    );
-
-    return;
-  }
-
-  await playInjectedTTS(
-    "I could not handle that."
-  );
-
-}
-
-/* ================= WEATHER ================= */
-
-async function getWeather(location){
-
-  try{
-
-    const geo =
-      await fetch(
-        "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" +
-        encodeURIComponent(location)
-      ).then(r => r.json());
-
-    const place =
-      geo.results?.[0];
-
-    if(!place){
-
-      await playInjectedTTS(
-        "I could not find that location."
-      );
-
-      return;
-    }
-
-    const weather =
-      await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m`
-      ).then(r => r.json());
-
-    const c =
-      weather.current;
-
-    await playInjectedTTS(
-      `Weather in ${place.name}: ${Math.round(c.temperature_2m)} degrees, humidity ${c.relative_humidity_2m} percent, wind ${Math.round(c.wind_speed_10m)} kilometers per hour.`
-    );
-
-  }catch(e){
-
-    log("Weather error: " + e);
-
-  }
-
-}
-
-/* ================= YOUTUBE ================= */
-
-function onYouTubeIframeAPIReady(){
-
-  ytPlayer =
-    new YT.Player("player", {
-
-      height:"260",
-      width:"100%",
-      videoId:"",
-
-      playerVars:{
-        autoplay:0,
-        controls:1,
-        rel:0
-      },
-
-      events:{
-
-        onReady:() => {
-
-          ytReady = true;
-
-          log(
-            "YouTube player ready"
-          );
-
-        },
-
-        onError:e => {
-
-          log(
-            "YouTube error: " +
-            e.data
-          );
-
-        }
-
-      }
-
-    });
-
-}
-
-window.onYouTubeIframeAPIReady =
-onYouTubeIframeAPIReady;
-
-async function searchYouTubeVideo(query){
-
-  const url =
-    "https://www.googleapis.com/youtube/v3/search" +
-    "?part=snippet" +
-    "&type=video" +
-    "&maxResults=1" +
-    "&q=" +
-    encodeURIComponent(query) +
-    "&key=" +
-    encodeURIComponent(YT_API_KEY);
-
-  const res =
-    await fetch(url);
-
-  const data =
-    await res.json();
-
-  const item =
-    data.items &&
-    data.items[0];
-
-  return {
-
-    videoId:
-      item.id.videoId,
-
-    title:
-      item.snippet?.title ||
-      "Unknown"
-
-  };
-
-}
-
-async function playMusic(query){
-
-  try{
-
-    if(!ytReady || !ytPlayer){
-
-      log("YouTube not ready");
-
-      return;
-    }
-
-    const result =
-      await searchYouTubeVideo(query);
-
-    lastVideoId =
-      result.videoId;
-
-    ytPlayer.loadVideoById(
-      result.videoId
-    );
-
-    ytPlayer.playVideo();
-
-    log(
-      `PLAYING -> ${result.title}`
-    );
-
-    setStatus("Playing music");
-
-  }catch(e){
-
-    log("YT error: " + e);
-
-  }
-
-}
-
-function pauseMusic(){
-
-  if(ytPlayer && ytReady){
-
-    ytPlayer.pauseVideo();
-
-    log("Music paused");
-
-  }
-
-}
-
-function resumeMusic(){
-
-  if(ytPlayer && ytReady){
-
-    ytPlayer.playVideo();
-
-    log("Music resumed");
-
-  }
-
-}
-
-function stopMusic(){
-
-  if(ytPlayer && ytReady){
-
-    ytPlayer.stopVideo();
-
-    log("Music stopped");
-
-  }
-
-}
-
-/* ================= STOP ================= */
-
-async function stopDrake(){
-
-  running = false;
-
-  aiBusy = false;
-
-  try{
-
-    if(wakeNode)
-      wakeNode.disconnect();
-
-    if(wakeSource)
-      wakeSource.disconnect();
-
-    if(wakeCtx)
-      await wakeCtx.close();
-
-    if(recognizer)
-      recognizer.remove();
-
-  }catch(e){}
-
-  setWake(false);
+  detecting = false;
 
   setStatus("stopped");
 
-  log("Drake stopped");
-
+  log("Stopped");
 }
 
-/* ================= UTILS ================= */
+async function saveLocal(){
 
-function wait(ms){
+  if(!model){
+    alert("Train model first");
+    return;
+  }
 
-  return new Promise(
-    r => setTimeout(r,ms)
+  await model.save(
+    "localstorage://drake-wake-model"
   );
 
+  localStorage.setItem(
+    "drake-wake-samples",
+    JSON.stringify(samples)
+  );
+
+  log("Model saved locally ✅");
 }
 
-/* ================= BOOT ================= */
+async function loadLocal(){
 
-log("Loaded.");
-log("JOIN MAIN DRAKE first.");
-log("Join second phone.");
-log("START DRAKE.");
-log("Say wake word.");
+  try{
 
-setStatus("ready");
+    model =
+      await tf.loadLayersModel(
+        "localstorage://drake-wake-model"
+      );
+
+    const saved =
+      localStorage.getItem(
+        "drake-wake-samples"
+      );
+
+    if(saved){
+      samples = JSON.parse(saved);
+    }
+
+    log("Local model loaded ✅");
+
+    setStatus("model loaded");
+
+  }catch(e){
+
+    log("Load local error: " + e.message);
+  }
+}
+
+async function downloadModel(){
+
+  if(!model){
+    alert("Train model first");
+    return;
+  }
+
+  await model.save(
+    "downloads://drake-wake-model"
+  );
+
+  log(
+    "Downloaded model.json + weights.bin ✅"
+  );
+}
+
+async function loadModelFiles(){
+
+  const files =
+    document.getElementById("modelFiles").files;
+
+  if(files.length < 2){
+
+    alert(
+      "Select both model.json and weights.bin"
+    );
+
+    return;
+  }
+
+  try{
+
+    model =
+      await tf.loadLayersModel(
+        tf.io.browserFiles([...files])
+      );
+
+    log("Model files loaded ✅");
+
+    setStatus("model loaded");
+
+  }catch(e){
+
+    log(
+      "Load model files error: " +
+      e.message
+    );
+  }
+}
+
+function wait(ms){
+  return new Promise(r=>setTimeout(r,ms));
+}
+
+log(`
+FLOW:
+
+1. INIT MIC
+2. Record 15-30 DRAKE samples
+3. Record 15-30 NOISE samples
+4. TRAIN
+5. TEST DETECTION
+6. DOWNLOAD MODEL FILES
+`);
 
 </script>
 
