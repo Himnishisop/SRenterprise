@@ -1,538 +1,825 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Drake Tiny Wake Trainer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gla Board - Gesture Capture Fixed</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+<style>
+  * { box-sizing: border-box; }
 
-  <style>
-    body{
-      margin:0;
-      background:#05070d;
-      color:white;
-      font-family:Arial;
-      padding:14px;
-    }
+  body {
+    margin: 0;
+    background: #090909;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
 
-    button{
-      padding:12px 16px;
-      border:0;
-      border-radius:10px;
-      background:#2d6cdf;
-      color:white;
-      font-weight:900;
-      margin:5px;
-      cursor:pointer;
-      font-size:14px;
-    }
+  h1 { margin: 14px 0 5px; font-size: 28px; }
 
-    .green{background:#009b5a}
-    .red{background:#b91c1c}
-    .gray{background:#333844}
+  p {
+    color: #aaa;
+    margin: 5px 15px 15px;
+    font-size: 14px;
+  }
 
-    #wake{
-      font-size:28px;
-      font-weight:900;
-      color:#ff4444;
-      margin:12px 0;
-    }
+  .section {
+    width: 95%;
+    max-width: 900px;
+    margin: 15px auto;
+    padding: 15px;
+    background: #151515;
+    border-radius: 14px;
+    border: 1px solid #333;
+  }
 
-    #status{
-      color:#9fd3ff;
-      font-weight:900;
-      margin:10px 0;
-    }
+  .camera-box {
+    position: relative;
+    width: 100%;
+    max-width: 850px;
+    margin: auto;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #333;
+    background: black;
+  }
 
-    #debug{
-      background:#000;
-      color:#00ff88;
-      height:45vh;
-      overflow:auto;
-      padding:12px;
-      border-radius:10px;
-      font-family:Consolas;
-      font-size:12px;
-      white-space:pre-wrap;
-    }
+  video, canvas {
+    width: 100%;
+    max-width: 850px;
+    border-radius: 12px;
+    background: black;
+    border: 1px solid #333;
+  }
 
-    input{
-      margin:8px 0;
-      display:block;
-    }
-  </style>
+  #video {
+    display: block;
+    border: none;
+    border-radius: 0;
+  }
+
+  #overlayCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+    pointer-events: none;
+    border-radius: 0;
+  }
+
+  button {
+    margin: 7px;
+    padding: 12px 18px;
+    border: none;
+    border-radius: 10px;
+    background: #7c3aed;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 15px;
+  }
+
+  button:hover { background: #9b5cff; }
+  button.secondary { background: #333; }
+  button.danger { background: #b91c1c; }
+  button.good { background: #15803d; }
+
+  #middleCaptureBtn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 155px;
+    height: 155px;
+    border-radius: 50%;
+    background: rgba(124, 58, 237, 0.88);
+    border: 4px solid white;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    z-index: 10;
+    box-shadow: 0 0 35px rgba(124, 58, 237, 0.9);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.2;
+    padding: 10px;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  #middleCaptureBtn.hidden { display: none; }
+
+  .controls {
+    margin: 15px auto;
+    max-width: 700px;
+    text-align: left;
+  }
+
+  label {
+    display: block;
+    margin-top: 12px;
+    color: #ccc;
+    font-size: 14px;
+  }
+
+  input[type="range"] { width: 100%; }
+
+  .status {
+    color: #00ff99;
+    margin-top: 10px;
+    font-size: 14px;
+    min-height: 22px;
+  }
+
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  @media (min-width: 800px) {
+    .preview-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
 </head>
 
 <body>
 
-<h2>Drake Tiny Wake Trainer</h2>
+<h1>Gla Board</h1>
+<p>Show full palm first, then only index finger. It starts 3 sec timer and captures.</p>
 
-<button onclick="initMic()">INIT MIC</button>
+<div class="section">
+  <h2>Camera</h2>
 
-<button class="green" onclick="recordSample('drake')">
-  RECORD DRAKE SAMPLE
-</button>
+  <div class="camera-box">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlayCanvas"></canvas>
+    <div id="middleCaptureBtn">Loading</div>
+  </div>
 
-<button class="gray" onclick="recordSample('noise')">
-  RECORD NOISE SAMPLE
-</button>
+  <br>
 
-<button onclick="trainModel()">TRAIN</button>
+  <button class="good" onclick="enableSound()">Enable Sound</button>
+  <button class="secondary" onclick="toggleMiddleButton()">Toggle Middle Button</button>
+  <button onclick="manualCapture()">Manual Capture</button>
+  <button onclick="saveWhiteboard()">Save Whiteboard</button>
+  <button class="danger" onclick="resetAll()">Reset</button>
 
-<button class="green" onclick="startDetect()">
-  START DETECT
-</button>
+  <div class="status" id="status">Starting camera and hand tracking...</div>
+</div>
 
-<button class="red" onclick="stopDetect()">
-  STOP
-</button>
+<div class="section">
+  <h2>Adjust Detection</h2>
 
-<br><br>
+  <div class="controls">
+    <label>Difference Sensitivity: <span id="thresholdValue">45</span></label>
+    <input type="range" id="threshold" min="5" max="120" value="45" oninput="updateAndProcess()" />
 
-<button onclick="saveLocal()">
-  SAVE LOCAL
-</button>
+    <label>Dark Ink Boost: <span id="darkBoostValue">35</span></label>
+    <input type="range" id="darkBoost" min="0" max="120" value="35" oninput="updateAndProcess()" />
 
-<button onclick="loadLocal()">
-  LOAD LOCAL
-</button>
+    <label>Noise Removal: <span id="noiseValue">2</span></label>
+    <input type="range" id="noise" min="0" max="5" value="2" oninput="updateAndProcess()" />
 
-<button onclick="downloadModel()">
-  DOWNLOAD MODEL FILES
-</button>
+    <label>
+      <input type="checkbox" id="mirrorOutput" onchange="updateAndProcess()" />
+      Mirror output
+    </label>
 
-<input
-  type="file"
-  id="modelFiles"
-  multiple
-  accept=".json,.bin"
-/>
+    <label>
+      <input type="checkbox" id="blackInk" checked onchange="updateAndProcess()" />
+      Show writing as black ink
+    </label>
 
-<button onclick="loadModelFiles()">
-  LOAD MODEL FILES
-</button>
+    <label>
+      <input type="checkbox" id="showLandmarks" checked />
+      Show hand landmarks
+    </label>
+  </div>
+</div>
 
-<div id="wake">NOT DETECTED</div>
+<div class="section">
+  <h2>Photos</h2>
 
-<div id="status">idle</div>
+  <div class="preview-grid">
+    <div>
+      <h3>Blank Glass</h3>
+      <canvas id="blankCanvas"></canvas>
+    </div>
 
-<pre id="debug"></pre>
+    <div>
+      <h3>Written Glass</h3>
+      <canvas id="writtenCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Final Whiteboard</h2>
+  <canvas id="outputCanvas"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
 <script>
+const video = document.getElementById("video");
+const overlayCanvas = document.getElementById("overlayCanvas");
+const blankCanvas = document.getElementById("blankCanvas");
+const writtenCanvas = document.getElementById("writtenCanvas");
+const outputCanvas = document.getElementById("outputCanvas");
 
-let stream;
-let audioCtx;
-let analyser;
-let data;
+const overlayCtx = overlayCanvas.getContext("2d");
+const statusText = document.getElementById("status");
+const middleCaptureBtn = document.getElementById("middleCaptureBtn");
 
-let samples = [];
+const thresholdSlider = document.getElementById("threshold");
+const darkBoostSlider = document.getElementById("darkBoost");
+const noiseSlider = document.getElementById("noise");
 
-let model = null;
+const thresholdValue = document.getElementById("thresholdValue");
+const darkBoostValue = document.getElementById("darkBoostValue");
+const noiseValue = document.getElementById("noiseValue");
 
-let detecting = false;
+let hasBlank = false;
+let hasWritten = false;
+let captureStep = 1;
 
-const FEATURE_SIZE = 64;
+let middleButtonVisible = true;
+let countdownActive = false;
+let armed = false;
+let armedAt = 0;
+let openPalmFrames = 0;
+let onlyIndexFrames = 0;
 
-const RECORD_MS = 900;
+const PALM_STABLE_FRAMES = 8;
+const INDEX_STABLE_FRAMES = 8;
+const ARM_TIMEOUT_MS = 6000;
 
-const THRESHOLD = 0.82;
+let audioCtx = null;
+let soundEnabled = false;
+let lastCaptureTime = 0;
 
-function log(x){
-  debug.textContent += `[${new Date().toLocaleTimeString()}] ${x}\n`;
-  debug.scrollTop = debug.scrollHeight;
-  console.log(x);
+function enableSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+
+    soundEnabled = true;
+    beep(1000, 0.15, 0.12);
+    statusText.textContent = "Sound enabled. Now gesture timer will beep.";
+  } catch (err) {
+    alert("Sound failed: " + err.message);
+  }
 }
 
-function setStatus(x){
-  status.innerText = x;
+function beep(freq = 900, duration = 0.15, volume = 0.1) {
+  if (!soundEnabled || !audioCtx) return;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  gain.gain.value = volume;
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  osc.stop(audioCtx.currentTime + duration);
 }
 
-function setWake(ok, score=0){
+function setupCanvases() {
+  const w = video.videoWidth || 1280;
+  const h = video.videoHeight || 720;
 
-  wake.innerText = ok
-    ? `DRAKE DETECTED ✅ ${score.toFixed(2)}`
-    : `NOT DETECTED ${score.toFixed(2)}`;
-
-  wake.style.color = ok
-    ? "#00ff88"
-    : "#ff4444";
+  [overlayCanvas, blankCanvas, writtenCanvas, outputCanvas].forEach(canvas => {
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+  });
 }
 
-async function initMic(){
+function updateBubbleText(text) {
+  middleCaptureBtn.innerHTML = text;
+}
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio:{
-      echoCancellation:false,
-      noiseSuppression:false,
-      autoGainControl:false
+function toggleMiddleButton() {
+  middleButtonVisible = !middleButtonVisible;
+  middleCaptureBtn.classList.toggle("hidden", !middleButtonVisible);
+}
+
+function drawVideoToCanvas(canvas) {
+  setupCanvases();
+
+  const ctx = canvas.getContext("2d");
+
+  ctx.save();
+
+  // clear old black frame
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // important fix: draw actual current video frame
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  ctx.restore();
+}
+
+function isCanvasMostlyBlack(canvas) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+
+  const small = ctx.getImageData(0, 0, Math.min(w, 80), Math.min(h, 60)).data;
+
+  let brightness = 0;
+  const pixels = small.length / 4;
+
+  for (let i = 0; i < small.length; i += 4) {
+    brightness += small[i] + small[i + 1] + small[i + 2];
+  }
+
+  const avg = brightness / pixels / 3;
+  return avg < 8;
+}
+
+async function captureSafe(canvas, label) {
+  if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+    statusText.textContent = "Video not ready. Wait 1 second.";
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  // Wait for a real browser video frame
+  await new Promise(resolve => {
+    if ("requestVideoFrameCallback" in video) {
+      video.requestVideoFrameCallback(() => resolve());
+    } else {
+      requestAnimationFrame(() => resolve());
     }
   });
 
-  audioCtx = new AudioContext();
+  drawVideoToCanvas(canvas);
 
-  const src =
-    audioCtx.createMediaStreamSource(stream);
-
-  analyser = audioCtx.createAnalyser();
-
-  analyser.fftSize = 2048;
-
-  data = new Float32Array(
-    analyser.frequencyBinCount
-  );
-
-  src.connect(analyser);
-
-  log("Mic ready ✅");
-
-  setStatus("mic ready");
-}
-
-async function recordSample(label){
-
-  if(!analyser){
-    alert("Init mic first");
-    return;
+  // If black frame came, retry
+  if (isCanvasMostlyBlack(canvas)) {
+    await new Promise(r => setTimeout(r, 350));
+    drawVideoToCanvas(canvas);
   }
 
-  setStatus("recording " + label);
-
-  log("Recording " + label + "...");
-
-  const feat = await captureFeature();
-
-  samples.push({
-    label,
-    feature: feat
-  });
-
-  log(
-    `Saved ${label} sample. Total: ${samples.length}`
-  );
-
-  setStatus(`saved ${label}`);
-}
-
-async function captureFeature(){
-
-  const frames = [];
-
-  const start = Date.now();
-
-  while(Date.now() - start < RECORD_MS){
-
-    analyser.getFloatFrequencyData(data);
-
-    const feature =
-      downsampleFFT(data, FEATURE_SIZE);
-
-    frames.push(feature);
-
-    await wait(50);
+  if (isCanvasMostlyBlack(canvas)) {
+    statusText.textContent = `${label} capture failed. Camera frame was black. Try again.`;
+    beep(250, 0.3, 0.12);
+    return false;
   }
 
-  return averageFrames(frames);
+  return true;
 }
 
-function downsampleFFT(arr, size){
+async function manualCapture() {
+  if (countdownActive) return;
+  await doCapture();
+}
 
-  const out = new Array(size).fill(0);
+async function doCapture() {
+  const now = Date.now();
 
-  const step =
-    Math.floor(arr.length / size);
+  if (now - lastCaptureTime < 1200) return;
+  lastCaptureTime = now;
 
-  for(let i=0;i<size;i++){
+  setupCanvases();
 
-    let sum = 0;
+  if (captureStep === 1) {
+    statusText.textContent = "Capturing blank glass...";
+    const ok = await captureSafe(blankCanvas, "Blank glass");
 
-    for(let j=0;j<step;j++){
+    if (!ok) return;
 
-      let v = arr[i * step + j];
+    hasBlank = true;
+    captureStep = 2;
+    resetArming();
 
-      if(!isFinite(v)) v = -100;
+    updateBubbleText("Blank<br>Saved");
+    statusText.textContent = "Blank glass captured. Now write on glass, then palm + index again.";
 
-      sum += v;
+    setTimeout(updateMainInstruction, 900);
+  } else {
+    statusText.textContent = "Capturing written glass...";
+    const ok = await captureSafe(writtenCanvas, "Written glass");
+
+    if (!ok) return;
+
+    hasWritten = true;
+
+    updateBubbleText("Generating");
+    statusText.textContent = "Written glass captured. Generating whiteboard...";
+
+    processBoard();
+
+    updateBubbleText("Done");
+    statusText.textContent = "Whiteboard generated. Save it or reset.";
+  }
+}
+
+function updateMainInstruction() {
+  if (countdownActive) return;
+
+  if (captureStep === 1) {
+    if (!armed) {
+      updateBubbleText("Show<br>Palm");
+      statusText.textContent = "Step 1: Show full palm to arm blank capture.";
+    } else {
+      updateBubbleText("Show<br>Index");
+      statusText.textContent = "Armed. Now show only index finger.";
     }
-
-    let avg = sum / step;
-
-    out[i] =
-      Math.max(
-        0,
-        Math.min(1, (avg + 100) / 100)
-      );
-  }
-
-  return out;
-}
-
-function averageFrames(frames){
-
-  const out =
-    new Array(FEATURE_SIZE).fill(0);
-
-  for(const f of frames){
-
-    for(let i=0;i<FEATURE_SIZE;i++){
-      out[i] += f[i];
+  } else {
+    if (!armed) {
+      updateBubbleText("Show<br>Palm");
+      statusText.textContent = "Step 2: Write first. Then show full palm to arm second capture.";
+    } else {
+      updateBubbleText("Show<br>Index");
+      statusText.textContent = "Armed. Now show only index finger.";
     }
   }
-
-  for(let i=0;i<FEATURE_SIZE;i++){
-    out[i] /= frames.length;
-  }
-
-  return out;
 }
 
-async function trainModel(){
+function resetArming() {
+  armed = false;
+  armedAt = 0;
+  openPalmFrames = 0;
+  onlyIndexFrames = 0;
+}
 
-  const drakeCount =
-    samples.filter(s=>s.label==="drake").length;
+function isFingerUp(landmarks, tipIndex, pipIndex) {
+  return landmarks[tipIndex].y < landmarks[pipIndex].y;
+}
 
-  const noiseCount =
-    samples.filter(s=>s.label==="noise").length;
+function distance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
 
-  if(drakeCount < 5 || noiseCount < 5){
+function detectOpenPalm(landmarks) {
+  const indexUp = isFingerUp(landmarks, 8, 6);
+  const middleUp = isFingerUp(landmarks, 12, 10);
+  const ringUp = isFingerUp(landmarks, 16, 14);
+  const pinkyUp = isFingerUp(landmarks, 20, 18);
 
-    alert(
-      "Record at least 5 Drake and 5 Noise samples"
-    );
+  const handWidth = distance(landmarks[5], landmarks[17]);
+  const handHeight = distance(landmarks[0], landmarks[9]);
 
-    return;
+  return indexUp && middleUp && ringUp && pinkyUp && handWidth > handHeight * 0.35;
+}
+
+function detectOnlyIndex(landmarks) {
+  const indexUp = isFingerUp(landmarks, 8, 6);
+  const middleUp = isFingerUp(landmarks, 12, 10);
+  const ringUp = isFingerUp(landmarks, 16, 14);
+  const pinkyUp = isFingerUp(landmarks, 20, 18);
+
+  return indexUp && !middleUp && !ringUp && !pinkyUp;
+}
+
+function startCountdown() {
+  if (countdownActive) return;
+
+  countdownActive = true;
+  armed = false;
+  openPalmFrames = 0;
+  onlyIndexFrames = 0;
+
+  let count = 3;
+
+  updateBubbleText(String(count));
+  statusText.textContent = `Capturing ${captureStep === 1 ? "blank glass" : "written glass"} in ${count}...`;
+  beep(900, 0.18, 0.12);
+
+  const timer = setInterval(async () => {
+    count--;
+
+    if (count > 0) {
+      updateBubbleText(String(count));
+      statusText.textContent = `Capturing ${captureStep === 1 ? "blank glass" : "written glass"} in ${count}...`;
+      beep(900, 0.18, 0.12);
+    } else {
+      clearInterval(timer);
+
+      updateBubbleText("Snap!");
+      statusText.textContent = "Capturing now...";
+      beep(1300, 0.25, 0.14);
+
+      setTimeout(async () => {
+        await doCapture();
+        countdownActive = false;
+        updateMainInstruction();
+      }, 250);
+    }
+  }, 1000);
+}
+
+function updateAndProcess() {
+  thresholdValue.textContent = thresholdSlider.value;
+  darkBoostValue.textContent = darkBoostSlider.value;
+  noiseValue.textContent = noiseSlider.value;
+
+  if (hasBlank && hasWritten) {
+    processBoard();
   }
+}
 
-  setStatus("training");
+function cleanNoise(mask, w, h, strength) {
+  if (strength <= 0) return mask;
 
-  log("Training tiny model...");
+  let result = new Uint8Array(mask);
 
-  const xs =
-    tf.tensor2d(samples.map(s=>s.feature));
+  for (let pass = 0; pass < strength; pass++) {
+    const temp = new Uint8Array(result);
 
-  const ys =
-    tf.tensor2d(
-      samples.map(s =>
-        s.label==="drake" ? [1] : [0]
-      )
-    );
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const index = y * w + x;
+        let count = 0;
 
-  model = tf.sequential();
-
-  model.add(tf.layers.dense({
-    inputShape:[FEATURE_SIZE],
-    units:32,
-    activation:"relu"
-  }));
-
-  model.add(tf.layers.dropout({
-    rate:0.2
-  }));
-
-  model.add(tf.layers.dense({
-    units:16,
-    activation:"relu"
-  }));
-
-  model.add(tf.layers.dense({
-    units:1,
-    activation:"sigmoid"
-  }));
-
-  model.compile({
-    optimizer:tf.train.adam(0.01),
-    loss:"binaryCrossentropy",
-    metrics:["accuracy"]
-  });
-
-  await model.fit(xs, ys, {
-    epochs:45,
-    shuffle:true,
-    callbacks:{
-      onEpochEnd:(epoch, logs)=>{
-
-        if(epoch % 10 === 0){
-
-          log(
-            `epoch ${epoch} loss=${logs.loss.toFixed(3)} acc=${(logs.acc || logs.accuracy).toFixed(3)}`
-          );
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nIndex = (y + dy) * w + (x + dx);
+            if (result[nIndex] > 0) count++;
+          }
         }
+
+        if (count <= 2) temp[index] = 0;
+        if (count >= 5) temp[index] = 255;
       }
     }
+
+    result = temp;
+  }
+
+  return result;
+}
+
+function processBoard() {
+  if (!hasBlank || !hasWritten) return;
+
+  const w = blankCanvas.width;
+  const h = blankCanvas.height;
+
+  const blankCtx = blankCanvas.getContext("2d");
+  const writtenCtx = writtenCanvas.getContext("2d");
+  const outputCtx = outputCanvas.getContext("2d");
+
+  const blankData = blankCtx.getImageData(0, 0, w, h);
+  const writtenData = writtenCtx.getImageData(0, 0, w, h);
+  const outputData = outputCtx.createImageData(w, h);
+
+  const threshold = parseInt(thresholdSlider.value);
+  const darkBoost = parseInt(darkBoostSlider.value);
+  const blackInk = document.getElementById("blackInk").checked;
+  const mirrorOutput = document.getElementById("mirrorOutput").checked;
+
+  let mask = new Uint8Array(w * h);
+
+  for (let i = 0; i < blankData.data.length; i += 4) {
+    const index = i / 4;
+
+    const br = blankData.data[i];
+    const bg = blankData.data[i + 1];
+    const bb = blankData.data[i + 2];
+
+    const wr = writtenData.data[i];
+    const wg = writtenData.data[i + 1];
+    const wb = writtenData.data[i + 2];
+
+    const blankGray = (br + bg + bb) / 3;
+    const writtenGray = (wr + wg + wb) / 3;
+
+    const diff =
+      Math.abs(wr - br) +
+      Math.abs(wg - bg) +
+      Math.abs(wb - bb);
+
+    const becameDarker = blankGray - writtenGray;
+
+    if (diff > threshold || becameDarker > darkBoost) {
+      mask[index] = 255;
+    } else {
+      mask[index] = 0;
+    }
+  }
+
+  mask = cleanNoise(mask, w, h, parseInt(noiseSlider.value));
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sourceX = x;
+      if (mirrorOutput) sourceX = w - x - 1;
+
+      const srcIndex = y * w + sourceX;
+      const outIndex = (y * w + x) * 4;
+      const isWriting = mask[srcIndex] > 0;
+
+      if (isWriting) {
+        if (blackInk) {
+          outputData.data[outIndex] = 0;
+          outputData.data[outIndex + 1] = 0;
+          outputData.data[outIndex + 2] = 0;
+        } else {
+          outputData.data[outIndex] = 124;
+          outputData.data[outIndex + 1] = 58;
+          outputData.data[outIndex + 2] = 237;
+        }
+      } else {
+        outputData.data[outIndex] = 255;
+        outputData.data[outIndex + 1] = 255;
+        outputData.data[outIndex + 2] = 255;
+      }
+
+      outputData.data[outIndex + 3] = 255;
+    }
+  }
+
+  outputCtx.putImageData(outputData, 0, 0);
+}
+
+function saveWhiteboard() {
+  if (!hasBlank || !hasWritten) {
+    alert("Capture both photos first.");
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.download = "gla-board-whiteboard.png";
+  link.href = outputCanvas.toDataURL("image/png");
+  link.click();
+}
+
+function resetAll() {
+  [blankCanvas, writtenCanvas, outputCanvas, overlayCanvas].forEach(canvas => {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
 
-  xs.dispose();
-  ys.dispose();
+  hasBlank = false;
+  hasWritten = false;
+  captureStep = 1;
+  countdownActive = false;
+  resetArming();
 
-  log("Training done ✅");
-
-  setStatus("trained");
+  updateBubbleText("Show<br>Palm");
+  statusText.textContent = "Reset done. Show palm to start again.";
 }
 
-async function startDetect(){
+function drawHandResults(results) {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-  if(!model){
-    alert("Train or load model first");
-    return;
+  if (!document.getElementById("showLandmarks").checked) return;
+  if (!results.multiHandLandmarks || !results.multiHandLandmarks.length) return;
+
+  for (const landmarks of results.multiHandLandmarks) {
+    drawConnectors(overlayCtx, landmarks, HAND_CONNECTIONS, {
+      color: "#00FF99",
+      lineWidth: 3
+    });
+
+    drawLandmarks(overlayCtx, landmarks, {
+      color: "#7c3aed",
+      lineWidth: 1,
+      radius: 4
+    });
   }
+}
 
-  detecting = true;
+function handleGesture(results) {
+  if (!results.multiHandLandmarks || !results.multiHandLandmarks.length) {
+    openPalmFrames = 0;
+    onlyIndexFrames = 0;
 
-  setStatus("detecting");
-
-  log("Detection started");
-
-  while(detecting){
-
-    const feat =
-      await captureFeature();
-
-    const pred =
-      model.predict(tf.tensor2d([feat]));
-
-    const score =
-      (await pred.data())[0];
-
-    pred.dispose();
-
-    if(score > THRESHOLD){
-
-      setWake(true, score);
-
-      log(
-        "WAKE ✅ score=" +
-        score.toFixed(3)
-      );
-
-    }else{
-
-      setWake(false, score);
+    if (armed && Date.now() - armedAt > ARM_TIMEOUT_MS) {
+      resetArming();
+      updateMainInstruction();
     }
 
-    await wait(120);
-  }
-}
-
-function stopDetect(){
-
-  detecting = false;
-
-  setStatus("stopped");
-
-  log("Stopped");
-}
-
-async function saveLocal(){
-
-  if(!model){
-    alert("Train model first");
     return;
   }
 
-  await model.save(
-    "localstorage://drake-wake-model"
-  );
+  if (countdownActive) return;
 
-  localStorage.setItem(
-    "drake-wake-samples",
-    JSON.stringify(samples)
-  );
+  const landmarks = results.multiHandLandmarks[0];
+  const isPalm = detectOpenPalm(landmarks);
+  const isOnlyIdx = detectOnlyIndex(landmarks);
 
-  log("Model saved locally ✅");
-}
+  if (!armed) {
+    if (isPalm) {
+      openPalmFrames++;
 
-async function loadLocal(){
+      if (openPalmFrames >= PALM_STABLE_FRAMES) {
+        armed = true;
+        armedAt = Date.now();
+        openPalmFrames = 0;
+        onlyIndexFrames = 0;
 
-  try{
-
-    model =
-      await tf.loadLayersModel(
-        "localstorage://drake-wake-model"
-      );
-
-    const saved =
-      localStorage.getItem(
-        "drake-wake-samples"
-      );
-
-    if(saved){
-      samples = JSON.parse(saved);
+        beep(700, 0.12, 0.1);
+        updateMainInstruction();
+      }
+    } else {
+      openPalmFrames = 0;
+    }
+  } else {
+    if (Date.now() - armedAt > ARM_TIMEOUT_MS) {
+      resetArming();
+      updateMainInstruction();
+      return;
     }
 
-    log("Local model loaded ✅");
+    if (isOnlyIdx) {
+      onlyIndexFrames++;
 
-    setStatus("model loaded");
-
-  }catch(e){
-
-    log("Load local error: " + e.message);
+      if (onlyIndexFrames >= INDEX_STABLE_FRAMES) {
+        onlyIndexFrames = 0;
+        startCountdown();
+      }
+    } else {
+      onlyIndexFrames = 0;
+    }
   }
 }
 
-async function downloadModel(){
+async function startEverything() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
 
-  if(!model){
-    alert("Train model first");
-    return;
+    video.srcObject = stream;
+
+    await video.play();
+
+    video.onloadedmetadata = async () => {
+      setupCanvases();
+
+      const hands = new Hands({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+      });
+
+      hands.onResults(results => {
+        setupCanvases();
+        drawHandResults(results);
+        handleGesture(results);
+      });
+
+      const camera = new Camera(video, {
+        onFrame: async () => {
+          if (video.readyState >= 2) {
+            await hands.send({ image: video });
+          }
+        },
+        width: 1280,
+        height: 720
+      });
+
+      camera.start();
+
+      updateBubbleText("Show<br>Palm");
+      statusText.textContent = "Camera ready. Click Enable Sound once, then show palm.";
+    };
+  } catch (err) {
+    statusText.textContent = "Camera or MediaPipe failed.";
+    alert("Error: " + err.message);
   }
-
-  await model.save(
-    "downloads://drake-wake-model"
-  );
-
-  log(
-    "Downloaded model.json + weights.bin ✅"
-  );
 }
 
-async function loadModelFiles(){
+thresholdValue.textContent = thresholdSlider.value;
+darkBoostValue.textContent = darkBoostSlider.value;
+noiseValue.textContent = noiseSlider.value;
 
-  const files =
-    document.getElementById("modelFiles").files;
-
-  if(files.length < 2){
-
-    alert(
-      "Select both model.json and weights.bin"
-    );
-
-    return;
-  }
-
-  try{
-
-    model =
-      await tf.loadLayersModel(
-        tf.io.browserFiles([...files])
-      );
-
-    log("Model files loaded ✅");
-
-    setStatus("model loaded");
-
-  }catch(e){
-
-    log(
-      "Load model files error: " +
-      e.message
-    );
-  }
-}
-
-function wait(ms){
-  return new Promise(r=>setTimeout(r,ms));
-}
-
-log(`
-FLOW:
-
-1. INIT MIC
-2. Record 15-30 DRAKE samples
-3. Record 15-30 NOISE samples
-4. TRAIN
-5. TEST DETECTION
-6. DOWNLOAD MODEL FILES
-`);
-
+startEverything();
 </script>
 
 </body>
