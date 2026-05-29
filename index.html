@@ -1,21 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Accelerometer Tilt Test</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Gyro / Motion Test</title>
 <style>
   * { box-sizing: border-box; }
-
   html, body {
     margin: 0;
     width: 100%;
     height: 100%;
-    background: #05050a;
-    color: white;
+    background: #05070d;
+    color: #eaffff;
     font-family: Arial, sans-serif;
     overflow: hidden;
-    touch-action: none;
   }
 
   #start {
@@ -23,127 +21,192 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: radial-gradient(circle at top, #24105a, #020204 65%);
+    background: radial-gradient(circle at top, #1d1655, #05070d 65%);
     z-index: 10;
-    text-align: center;
     padding: 20px;
+    text-align: center;
+  }
+
+  .box {
+    width: min(92vw, 520px);
+    padding: 22px;
+    border-radius: 22px;
+    border: 1px solid rgba(0,255,255,.35);
+    background: rgba(0,0,0,.55);
+    box-shadow: 0 0 40px rgba(0,255,255,.15);
   }
 
   button {
-    padding: 14px 20px;
     border: 0;
     border-radius: 14px;
-    background: linear-gradient(135deg, #00eaff, #7b2cff);
-    color: white;
+    padding: 13px 18px;
     font-weight: 900;
-    font-size: 16px;
+    color: white;
+    background: linear-gradient(135deg, #00eaff, #7b2cff);
+    cursor: pointer;
   }
 
   #app {
     display: none;
     width: 100vw;
     height: 100vh;
-    position: relative;
+    padding: 12px;
   }
 
-  #field {
-    position: absolute;
-    inset: 20px;
-    border: 2px solid rgba(0,255,255,.35);
-    border-radius: 24px;
-    background:
-      linear-gradient(rgba(0,255,255,.08) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,255,255,.08) 1px, transparent 1px);
-    background-size: 40px 40px;
-    overflow: hidden;
-  }
-
-  #centerLineX, #centerLineY {
-    position: absolute;
-    background: rgba(255,255,255,.25);
-  }
-
-  #centerLineX {
-    left: 50%;
-    top: 0;
-    width: 2px;
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
     height: 100%;
   }
 
-  #centerLineY {
-    top: 50%;
-    left: 0;
-    width: 100%;
-    height: 2px;
+  .card {
+    border: 1px solid rgba(0,255,255,.25);
+    border-radius: 16px;
+    background: rgba(0,0,0,.45);
+    padding: 12px;
+    overflow: hidden;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 16px;
+    color: #8fffff;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 80px 1fr 75px;
+    gap: 8px;
+    align-items: center;
+    margin: 7px 0;
+    font-size: 13px;
+  }
+
+  .bar {
+    height: 12px;
+    border-radius: 99px;
+    background: #111827;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.12);
+  }
+
+  .fill {
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, #7b2cff, #00eaff);
+    transform-origin: left;
+  }
+
+  .value {
+    text-align: right;
+    color: #ffeb7a;
+    font-family: monospace;
+  }
+
+  #dotBox {
+    position: relative;
+    height: 62%;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.18);
+    background:
+      linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px),
+      radial-gradient(circle at center, rgba(0,255,255,.08), rgba(0,0,0,.15));
+    background-size: 32px 32px, 32px 32px, 100% 100%;
+    overflow: hidden;
   }
 
   #dot {
     position: absolute;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: #ffeb00;
-    box-shadow: 0 0 28px #ffeb00;
-    transform: translate(-50%, -50%);
     left: 50%;
     top: 50%;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #00ffff;
+    box-shadow: 0 0 24px #00ffff;
+    transform: translate(-50%, -50%);
   }
 
-  #panel {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-    padding: 14px;
-    border-radius: 18px;
-    background: rgba(0,0,0,.72);
-    border: 1px solid rgba(0,255,255,.3);
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  .value {
-    color: #8fffff;
-    font-weight: 900;
-  }
-
-  .warn {
-    color: #ffdb7a;
+  .hint {
+    margin-top: 10px;
     font-size: 12px;
+    color: #b7c7d9;
+    line-height: 1.45;
+  }
+
+  .big {
+    font-size: 24px;
+    color: #ffeb7a;
+    font-family: monospace;
+  }
+
+  @media (max-width: 800px) {
+    .grid {
+      grid-template-columns: 1fr;
+      overflow: auto;
+    }
+    body { overflow: auto; }
   }
 </style>
 </head>
 <body>
 
 <div id="start">
-  <div>
-    <h2>Accelerometer Tilt Test</h2>
-    <p>Hold phone landscape. Tilt camera up/down. Dot should move vertically.</p>
+  <div class="box">
+    <h1>Gyro / Motion Raw Test</h1>
+    <p>Start this, hold phone in the VR/Cardboard landscape position, then tilt it up/down like camera view.</p>
     <button id="startBtn">START SENSOR TEST</button>
-    <p class="warn">Use HTTPS/GitHub Pages. Some browsers block sensors on file://</p>
+    <p style="font-size:12px;color:#ffdf8a;">Tell me which value changes cleanly for your wanted Y tilt.</p>
   </div>
 </div>
 
 <div id="app">
-  <div id="field">
-    <div id="centerLineX"></div>
-    <div id="centerLineY"></div>
-    <div id="dot"></div>
-  </div>
+  <div class="grid">
+    <div class="card">
+      <h2>DeviceOrientation</h2>
 
-  <div id="panel">
-    gx: <span id="gx" class="value">0</span> |
-    gy: <span id="gy" class="value">0</span> |
-    gz: <span id="gz" class="value">0</span><br>
+      <div class="row"><div>alpha</div><div class="bar"><div id="alphaBar" class="fill"></div></div><div id="alphaVal" class="value">0</div></div>
+      <div class="row"><div>beta</div><div class="bar"><div id="betaBar" class="fill"></div></div><div id="betaVal" class="value">0</div></div>
+      <div class="row"><div>gamma</div><div class="bar"><div id="gammaBar" class="fill"></div></div><div id="gammaVal" class="value">0</div></div>
 
-    mode0 atan2(gy,gz): <span id="m0" class="value">0</span>°<br>
-    mode1 atan2(-gx,gz): <span id="m1" class="value">0</span>°<br>
-    mode2 atan2(gz,gy): <span id="m2" class="value">0</span>°<br>
+      <h2 style="margin-top:18px;">DeviceMotion Gravity</h2>
 
-    chosen pitch: <span id="pitch" class="value">0</span>° |
-    chosen mode: <span id="mode" class="value">0</span><br>
+      <div class="row"><div>g.x</div><div class="bar"><div id="gxBar" class="fill"></div></div><div id="gxVal" class="value">0</div></div>
+      <div class="row"><div>g.y</div><div class="bar"><div id="gyBar" class="fill"></div></div><div id="gyVal" class="value">0</div></div>
+      <div class="row"><div>g.z</div><div class="bar"><div id="gzBar" class="fill"></div></div><div id="gzVal" class="value">0</div></div>
 
-    Tap screen to switch mode. Current goal: tilt phone camera down/up, find which mode changes most cleanly.
+      <h2 style="margin-top:18px;">Computed Pitch Tests</h2>
+
+      <div class="row"><div>p0 gy/gz</div><div class="bar"><div id="p0Bar" class="fill"></div></div><div id="p0Val" class="value">0</div></div>
+      <div class="row"><div>p1 -gx/gz</div><div class="bar"><div id="p1Bar" class="fill"></div></div><div id="p1Val" class="value">0</div></div>
+      <div class="row"><div>p2 gz/gy</div><div class="bar"><div id="p2Bar" class="fill"></div></div><div id="p2Val" class="value">0</div></div>
+      <div class="row"><div>p3 gx/gy</div><div class="bar"><div id="p3Bar" class="fill"></div></div><div id="p3Val" class="value">0</div></div>
+
+      <div class="hint">
+        Move phone like this: keep it sideways in landscape, then point camera down/up.
+        Tell me which value changes strongly while roll does not mess it up: beta, gamma, g.x, g.y, g.z, p0, p1, p2, or p3.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Live Dot Test</h2>
+      <div id="dotBox">
+        <div id="dot"></div>
+      </div>
+
+      <div class="hint">
+        Dot uses <b>alpha for X</b> and <b>p0 for Y</b> by default.
+        This is only a visual tester.
+      </div>
+
+      <h2 style="margin-top:18px;">Screen Info</h2>
+      <div>orientation angle:</div>
+      <div id="screenAngle" class="big">0</div>
+      <div style="margin-top:12px;">status:</div>
+      <div id="status" class="big">waiting</div>
+    </div>
   </div>
 </div>
 
@@ -151,105 +214,141 @@
 const start = document.getElementById("start");
 const app = document.getElementById("app");
 const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
+const screenAngleEl = document.getElementById("screenAngle");
+
 const dot = document.getElementById("dot");
+const dotBox = document.getElementById("dotBox");
 
-const gxEl = document.getElementById("gx");
-const gyEl = document.getElementById("gy");
-const gzEl = document.getElementById("gz");
-const m0El = document.getElementById("m0");
-const m1El = document.getElementById("m1");
-const m2El = document.getElementById("m2");
-const pitchEl = document.getElementById("pitch");
-const modeEl = document.getElementById("mode");
+let alpha = 0, beta = 0, gamma = 0;
+let gx = 0, gy = 0, gz = 0;
+let p0 = 0, p1 = 0, p2 = 0, p3 = 0;
 
-let mode = 0;
-let zeroPitch = null;
-let pitch = 0;
-let smoothPitch = 0;
-
-let rawGx = 0;
-let rawGy = 0;
-let rawGz = 0;
+let zeroAlpha = null;
+let zeroP0 = null;
 
 function radToDeg(r) {
   return r * 180 / Math.PI;
 }
 
-function normalizeDeg(deg) {
-  deg = deg % 360;
-  if (deg > 180) deg -= 360;
-  if (deg < -180) deg += 360;
-  return deg;
+function normDeg(d) {
+  d = d % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
 }
 
-function lerp(current, target, amount) {
-  return current + (target - current) * amount;
+function setBar(id, val, range) {
+  const clamped = Math.max(-range, Math.min(range, val));
+  const percent = ((clamped + range) / (range * 2)) * 100;
+  document.getElementById(id).style.width = percent + "%";
 }
 
-function getPitchByMode(gx, gy, gz, selectedMode) {
-  if (selectedMode === 0) return radToDeg(Math.atan2(gy, gz));
-  if (selectedMode === 1) return radToDeg(Math.atan2(-gx, gz));
-  return radToDeg(Math.atan2(gz, gy));
+function setValue(id, val) {
+  document.getElementById(id).textContent = Number(val).toFixed(2);
+}
+
+function updateUI() {
+  setValue("alphaVal", alpha);
+  setValue("betaVal", beta);
+  setValue("gammaVal", gamma);
+
+  setValue("gxVal", gx);
+  setValue("gyVal", gy);
+  setValue("gzVal", gz);
+
+  setValue("p0Val", p0);
+  setValue("p1Val", p1);
+  setValue("p2Val", p2);
+  setValue("p3Val", p3);
+
+  setBar("alphaBar", normDeg(alpha), 180);
+  setBar("betaBar", beta, 180);
+  setBar("gammaBar", gamma, 90);
+
+  setBar("gxBar", gx, 10);
+  setBar("gyBar", gy, 10);
+  setBar("gzBar", gz, 10);
+
+  setBar("p0Bar", p0, 180);
+  setBar("p1Bar", p1, 180);
+  setBar("p2Bar", p2, 180);
+  setBar("p3Bar", p3, 180);
+
+  const screenAngle =
+    screen.orientation?.angle ??
+    window.orientation ??
+    0;
+
+  screenAngleEl.textContent = screenAngle;
+
+  if (zeroAlpha === null) zeroAlpha = alpha;
+  if (zeroP0 === null) zeroP0 = p0;
+
+  const x = normDeg(alpha - zeroAlpha);
+  const y = normDeg(p0 - zeroP0);
+
+  const box = dotBox.getBoundingClientRect();
+
+  let px = box.width / 2 - x * 4;
+  let py = box.height / 2 + y * 4;
+
+  px = Math.max(12, Math.min(box.width - 12, px));
+  py = Math.max(12, Math.min(box.height - 12, py));
+
+  dot.style.left = px + "px";
+  dot.style.top = py + "px";
+
+  requestAnimationFrame(updateUI);
+}
+
+function onOrientation(e) {
+  alpha = e.alpha ?? 0;
+  beta = e.beta ?? 0;
+  gamma = e.gamma ?? 0;
+  statusEl.textContent = "orientation";
 }
 
 function onMotion(e) {
   const g = e.accelerationIncludingGravity;
   if (!g) return;
 
-  rawGx = g.x ?? 0;
-  rawGy = g.y ?? 0;
-  rawGz = g.z ?? 0;
+  gx = g.x ?? 0;
+  gy = g.y ?? 0;
+  gz = g.z ?? 0;
 
-  const m0 = normalizeDeg(radToDeg(Math.atan2(rawGy, rawGz)));
-  const m1 = normalizeDeg(radToDeg(Math.atan2(-rawGx, rawGz)));
-  const m2 = normalizeDeg(radToDeg(Math.atan2(rawGz, rawGy)));
+  p0 = normDeg(radToDeg(Math.atan2(gy, gz)));
+  p1 = normDeg(radToDeg(Math.atan2(-gx, gz)));
+  p2 = normDeg(radToDeg(Math.atan2(gz, gy)));
+  p3 = normDeg(radToDeg(Math.atan2(gx, gy)));
 
-  let rawPitch = normalizeDeg(getPitchByMode(rawGx, rawGy, rawGz, mode));
-
-  if (zeroPitch === null) {
-    zeroPitch = rawPitch;
-    smoothPitch = 0;
-  }
-
-  const relativePitch = normalizeDeg(rawPitch - zeroPitch);
-  smoothPitch = lerp(smoothPitch, relativePitch, 0.22);
-  pitch = smoothPitch;
-
-  gxEl.textContent = rawGx.toFixed(2);
-  gyEl.textContent = rawGy.toFixed(2);
-  gzEl.textContent = rawGz.toFixed(2);
-
-  m0El.textContent = m0.toFixed(1);
-  m1El.textContent = m1.toFixed(1);
-  m2El.textContent = m2.toFixed(1);
-
-  pitchEl.textContent = pitch.toFixed(1);
-  modeEl.textContent = mode;
-
-  const x = 50;
-  const y = 50 + pitch * 1.2;
-
-  dot.style.left = x + "%";
-  dot.style.top = Math.max(5, Math.min(95, y)) + "%";
+  statusEl.textContent = "motion";
 }
 
 async function requestSensors() {
   if (
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function"
+  ) {
+    const res = await DeviceOrientationEvent.requestPermission();
+    if (res !== "granted") throw new Error("Gyro permission denied");
+  }
+
+  if (
     typeof DeviceMotionEvent !== "undefined" &&
     typeof DeviceMotionEvent.requestPermission === "function"
   ) {
-    const res = await DeviceMotionEvent.requestPermission();
-    if (res !== "granted") throw new Error("Motion permission denied");
+    const res2 = await DeviceMotionEvent.requestPermission();
+    if (res2 !== "granted") throw new Error("Motion permission denied");
   }
 
+  window.addEventListener("deviceorientation", onOrientation, true);
   window.addEventListener("devicemotion", onMotion, true);
 }
 
-async function goFullScreen() {
-  if (document.documentElement.requestFullscreen) {
-    await document.documentElement.requestFullscreen().catch(() => {});
-  }
-
+async function fullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) await el.requestFullscreen().catch(() => {});
   if (screen.orientation && screen.orientation.lock) {
     await screen.orientation.lock("landscape").catch(() => {});
   }
@@ -257,23 +356,18 @@ async function goFullScreen() {
 
 startBtn.onclick = async () => {
   try {
-    await goFullScreen();
+    await fullscreen();
     await requestSensors();
 
     start.style.display = "none";
     app.style.display = "block";
-  } catch (err) {
-    alert("Sensor error: " + err.message);
+
+    requestAnimationFrame(updateUI);
+  } catch (e) {
+    alert("Error: " + e.message);
+    console.error(e);
   }
 };
-
-document.body.addEventListener("click", () => {
-  if (app.style.display !== "block") return;
-
-  mode = (mode + 1) % 3;
-  zeroPitch = null;
-  smoothPitch = 0;
-});
 </script>
 
 </body>
