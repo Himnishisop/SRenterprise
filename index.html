@@ -1,523 +1,790 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Gla Board</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>VR YouTube Gesture Search</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 
 <style>
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
-    margin: 0;
-    background: #090909;
-    color: white;
-    font-family: Arial, sans-serif;
-    text-align: center;
-  }
-
-  h1 {
-    margin: 14px 0 5px;
-    font-size: 28px;
-  }
-
-  p {
-    color: #aaa;
-    margin: 5px 15px 15px;
-    font-size: 14px;
-  }
-
-  .section {
-    width: 95%;
-    max-width: 900px;
-    margin: 15px auto;
-    padding: 15px;
-    background: #151515;
-    border-radius: 14px;
-    border: 1px solid #333;
-  }
-
-  .camera-box {
-    position: relative;
-    width: 100%;
-    max-width: 850px;
-    margin: auto;
-  }
-
-  video, canvas {
-    width: 100%;
-    max-width: 850px;
-    border-radius: 12px;
-    background: black;
-    border: 1px solid #333;
-  }
-
-  button {
-    margin: 7px;
-    padding: 12px 18px;
-    border: none;
-    border-radius: 10px;
-    background: #7c3aed;
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
-    font-size: 15px;
-  }
-
-  button:hover {
-    background: #9b5cff;
-  }
-
-  button.secondary {
-    background: #333;
-  }
-
-  button.danger {
-    background: #b91c1c;
-  }
-
-  #middleCaptureBtn {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 145px;
-    height: 145px;
-    border-radius: 50%;
-    background: rgba(124, 58, 237, 0.88);
-    border: 4px solid white;
-    color: white;
-    font-size: 17px;
-    font-weight: bold;
-    z-index: 10;
-    box-shadow: 0 0 35px rgba(124, 58, 237, 0.9);
-    backdrop-filter: blur(8px);
-  }
-
-  #middleCaptureBtn:hover {
-    background: rgba(155, 92, 255, 0.95);
-  }
-
-  #middleCaptureBtn.hidden {
-    display: none;
-  }
-
-  .controls {
-    margin: 15px auto;
-    max-width: 700px;
-    text-align: left;
-  }
-
-  label {
-    display: block;
-    margin-top: 12px;
-    color: #ccc;
-    font-size: 14px;
-  }
-
-  input[type="range"] {
-    width: 100%;
-  }
-
-  .status {
-    color: #00ff99;
-    margin-top: 10px;
-    font-size: 14px;
-  }
-
-  .preview-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 15px;
-  }
-
-  @media (min-width: 800px) {
-    .preview-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,sans-serif;touch-action:none}
+#start{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:radial-gradient(circle at top,#251052,#020005 65%);color:white;text-align:center;padding:20px}
+.box{width:min(92vw,470px);padding:24px;border-radius:24px;border:1px solid rgba(0,255,255,.35);background:rgba(0,0,0,.55);box-shadow:0 0 50px rgba(0,255,255,.18)}
+h1{margin:0 0 10px;color:#9fffff;font-size:24px}
+p{font-size:14px;line-height:1.45;color:#dce8ff}
+button{border:0;border-radius:14px;padding:13px 16px;font-weight:900;color:white;background:linear-gradient(135deg,#00eaff,#7b2cff)}
+#app{display:none;position:fixed;inset:0;background:#000;overflow:hidden}
+#hiddenVideo{display:none}
+.eye{position:absolute;top:0;width:50vw;height:100vh;overflow:hidden;background:#000}
+#leftEye{left:0}#rightEye{right:0}
+.eyeVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.divider{position:fixed;left:50%;top:0;width:2px;height:100vh;transform:translateX(-1px);background:rgba(0,255,255,.35);z-index:60}
+.panel{position:absolute;width:78%;height:68%;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:18px;overflow:hidden;background:rgba(0,0,0,.9);border:2px solid rgba(0,255,255,.75);box-shadow:0 0 34px rgba(0,255,255,.3);z-index:20}
+.dragZone{position:absolute;right:8px;top:48px;width:70px;height:70px;z-index:40;display:grid;place-items:center;text-align:center;font-size:10px;font-weight:900;color:#ffeb00;border:2px dashed rgba(255,235,0,.8);border-radius:16px;background:rgba(0,0,0,.65)}
+.dragZone.hover{background:rgba(255,235,0,.22);box-shadow:0 0 20px #ffeb00}
+.top{height:42px;display:grid;grid-template-columns:22px 1fr 52px;gap:7px;align-items:center;padding:7px;background:linear-gradient(90deg,rgba(0,255,255,.24),rgba(124,44,255,.25));border-bottom:1px solid rgba(255,255,255,.16)}
+.orb{width:13px;height:13px;border-radius:50%;background:#00ffff;box-shadow:0 0 13px #00ffff}
+.searchBox{height:27px;border-radius:10px;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:11px;display:flex;align-items:center;padding:0 8px;overflow:hidden;white-space:nowrap}
+.btnSmall{height:27px;padding:0;border-radius:10px;font-size:10px;background:linear-gradient(135deg,#00ffc8,#0066ff);color:#001014}
+.player{height:46%;background:#050505;position:relative}
+.playerBox{width:100%;height:100%;pointer-events:none}
+.results{height:calc(54% - 42px - 58px);overflow:hidden;padding:7px;display:grid;gap:6px;background:rgba(0,0,0,.72)}
+.result{display:grid;grid-template-columns:58px 1fr;gap:7px;height:58px;border-radius:12px;border:1px solid rgba(0,255,255,.22);background:rgba(0,20,32,.78);overflow:hidden;color:white}
+.result.hover{border-color:#ffeb00;box-shadow:0 0 18px rgba(255,235,0,.75)}
+.result img{width:58px;height:58px;object-fit:cover}
+.rTitle{font-size:10px;font-weight:900;line-height:1.25;padding-top:6px;height:32px;overflow:hidden}
+.rChan{font-size:9px;color:#9eeaf0;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.controls{height:58px;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:6px;background:rgba(0,0,0,.86);border-top:1px solid rgba(255,255,255,.12)}
+.control{display:grid;place-items:center;font-size:10px;font-weight:900;border-radius:11px;border:1px solid rgba(0,255,255,.32);background:rgba(0,20,32,.84);color:white}
+.control.hover{border-color:#ffeb00;box-shadow:0 0 16px rgba(255,235,0,.7)}
+.reticle{position:absolute;width:28px;height:28px;z-index:100;border:2px solid #00ffff;border-radius:50%;box-shadow:0 0 18px #00ffff;transform:translate(-50%,-50%);pointer-events:none}
+.reticle:before,.reticle:after{content:"";position:absolute;background:#00ffff}
+.reticle:before{width:42px;height:2px;left:-9px;top:11px}
+.reticle:after{width:2px;height:42px;left:11px;top:-9px}
+.reticle.pinching{border-color:#ffeb00;box-shadow:0 0 22px #ffeb00}
+.keyboard{display:none;position:absolute;left:50%;top:9px;width:82%;transform:translateX(-50%);z-index:90;padding:8px;border-radius:16px;background:rgba(0,0,0,.75);border:1px solid rgba(0,255,255,.35);text-align:center;color:white;pointer-events:none}
+.keyboard.active{display:block}
+.kTitle{font-size:11px;font-weight:900;color:#8fffff;letter-spacing:1px}
+.kLetter{font-size:28px;font-weight:900;color:#ffeb00;text-shadow:0 0 16px #ffeb00}
+.kText{font-size:12px;color:#dfffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kHelp{font-size:9px;color:#aacfd6;margin-top:3px}
+#hud{position:fixed;z-index:300;left:50%;bottom:8px;transform:translateX(-50%);padding:7px 11px;border-radius:999px;border:1px solid rgba(0,255,255,.28);background:rgba(0,0,0,.68);color:#bfffff;font-size:10px;white-space:nowrap}
 </style>
 </head>
 
 <body>
 
-<h1>Gla Board</h1>
-<p>Capture blank glass first, then write on glass, capture again, and convert it into a clean whiteboard.</p>
-
-<div class="section">
-  <h2>Camera</h2>
-
-  <div class="camera-box">
-    <video id="video" autoplay playsinline></video>
-
-    <button id="middleCaptureBtn" onclick="middleCaptureAction()">
-      Capture<br>Blank
-    </button>
-  </div>
-
-  <br>
-
-  <button onclick="captureBlank()">1. Capture Blank Glass</button>
-  <button onclick="captureWritten()">2. Capture Written Glass</button>
-  <button onclick="processBoard()">3. Make Whiteboard</button>
-  <button onclick="saveWhiteboard()">Save Whiteboard</button>
-  <button class="secondary" onclick="toggleMiddleButton()">Toggle Middle Button</button>
-  <button class="danger" onclick="resetAll()">Reset</button>
-
-  <div class="status" id="status">Starting camera...</div>
-</div>
-
-<div class="section">
-  <h2>Adjust Detection</h2>
-
-  <div class="controls">
-    <label>Difference Sensitivity: <span id="thresholdValue">45</span></label>
-    <input type="range" id="threshold" min="5" max="120" value="45" oninput="updateAndProcess()" />
-
-    <label>Dark Ink Boost: <span id="darkBoostValue">35</span></label>
-    <input type="range" id="darkBoost" min="0" max="120" value="35" oninput="updateAndProcess()" />
-
-    <label>Noise Removal: <span id="noiseValue">2</span></label>
-    <input type="range" id="noise" min="0" max="5" value="2" oninput="updateAndProcess()" />
-
-    <label>
-      <input type="checkbox" id="mirrorOutput" onchange="updateAndProcess()" />
-      Mirror output
-    </label>
-
-    <label>
-      <input type="checkbox" id="blackInk" checked onchange="updateAndProcess()" />
-      Show writing as black ink
-    </label>
+<div id="start">
+  <div class="box">
+    <h1>VR YouTube Gesture Search</h1>
+    <p>Proper YouTube search, VR camera passthrough, gyro panel, MediaPipe pointer, pinch click, and finger keyboard.</p>
+    <button id="startBtn">START FULLSCREEN VR</button>
+    <p style="font-size:12px;color:#ffdf8a">Put phone sideways in Cardboard after starting.</p>
   </div>
 </div>
 
-<div class="section">
-  <h2>Photos</h2>
+<div id="app">
+  <video id="hiddenVideo" autoplay playsinline muted></video>
 
-  <div class="preview-grid">
-    <div>
-      <h3>Blank Glass</h3>
-      <canvas id="blankCanvas"></canvas>
+  <div id="leftEye" class="eye">
+    <video id="leftVideo" class="eyeVideo" autoplay playsinline muted></video>
+
+    <div id="leftKeyboard" class="keyboard">
+      <div class="kTitle">KEYBOARD MODE</div>
+      <div id="leftLetter" class="kLetter">A</div>
+      <div id="leftTyped" class="kText">Search YouTube</div>
+      <div class="kHelp">Index A-F/BKSP/SPC | Middle G-L/ENTER | Ring M-S | Pinky T-Z</div>
     </div>
 
-    <div>
-      <h3>Written Glass</h3>
-      <canvas id="writtenCanvas"></canvas>
-    </div>
-  </div>
-</div>
+    <div id="leftPanel" class="panel">
+      <div class="dragZone" data-action="drag">DRAG<br>SPACE</div>
 
-<div class="section">
-  <h2>Final Whiteboard</h2>
-  <canvas id="outputCanvas"></canvas>
+      <div class="top">
+        <div class="orb"></div>
+        <div id="leftSearch" class="searchBox">Search YouTube</div>
+        <button class="btnSmall hit" data-action="search">SEARCH</button>
+      </div>
+
+      <div class="player">
+        <div id="leftPlayer" class="playerBox"></div>
+      </div>
+
+      <div id="leftResults" class="results"></div>
+
+      <div class="controls">
+        <div class="control hit" data-action="play">PLAY</div>
+        <div class="control hit" data-action="pause">PAUSE</div>
+        <div class="control hit" data-action="back">-10S</div>
+        <div class="control hit" data-action="forward">+10S</div>
+        <div class="control hit" data-action="keyboard">KEY</div>
+      </div>
+    </div>
+
+    <div id="leftReticle" class="reticle"></div>
+  </div>
+
+  <div id="rightEye" class="eye">
+    <video id="rightVideo" class="eyeVideo" autoplay playsinline muted></video>
+
+    <div id="rightKeyboard" class="keyboard">
+      <div class="kTitle">KEYBOARD MODE</div>
+      <div id="rightLetter" class="kLetter">A</div>
+      <div id="rightTyped" class="kText">Search YouTube</div>
+      <div class="kHelp">Index A-F/BKSP/SPC | Middle G-L/ENTER | Ring M-S | Pinky T-Z</div>
+    </div>
+
+    <div id="rightPanel" class="panel">
+      <div class="dragZone" data-action="drag">DRAG<br>SPACE</div>
+
+      <div class="top">
+        <div class="orb"></div>
+        <div id="rightSearch" class="searchBox">Search YouTube</div>
+        <button class="btnSmall hit" data-action="search">SEARCH</button>
+      </div>
+
+      <div class="player">
+        <div id="rightPlayer" class="playerBox"></div>
+      </div>
+
+      <div id="rightResults" class="results"></div>
+
+      <div class="controls">
+        <div class="control hit" data-action="play">PLAY</div>
+        <div class="control hit" data-action="pause">PAUSE</div>
+        <div class="control hit" data-action="back">-10S</div>
+        <div class="control hit" data-action="forward">+10S</div>
+        <div class="control hit" data-action="keyboard">KEY</div>
+      </div>
+    </div>
+
+    <div id="rightReticle" class="reticle"></div>
+  </div>
+
+  <div class="divider"></div>
+  <div id="hud">Starting...</div>
 </div>
 
 <script>
-  const video = document.getElementById("video");
-  const blankCanvas = document.getElementById("blankCanvas");
-  const writtenCanvas = document.getElementById("writtenCanvas");
-  const outputCanvas = document.getElementById("outputCanvas");
+const YOUTUBE_API_KEY = "AIzaSyBW9ylko1FTzfvco2NShiRE4lkI29fP7tc";
 
-  const statusText = document.getElementById("status");
-  const middleCaptureBtn = document.getElementById("middleCaptureBtn");
+const startBtn = document.getElementById("startBtn");
+const startScreen = document.getElementById("start");
+const app = document.getElementById("app");
 
-  const thresholdSlider = document.getElementById("threshold");
-  const darkBoostSlider = document.getElementById("darkBoost");
-  const noiseSlider = document.getElementById("noise");
+const hiddenVideo = document.getElementById("hiddenVideo");
+const leftVideo = document.getElementById("leftVideo");
+const rightVideo = document.getElementById("rightVideo");
 
-  const thresholdValue = document.getElementById("thresholdValue");
-  const darkBoostValue = document.getElementById("darkBoostValue");
-  const noiseValue = document.getElementById("noiseValue");
+const leftPanel = document.getElementById("leftPanel");
+const rightPanel = document.getElementById("rightPanel");
 
-  let hasBlank = false;
-  let hasWritten = false;
+const leftReticle = document.getElementById("leftReticle");
+const rightReticle = document.getElementById("rightReticle");
 
-  let captureStep = 1;
-  let middleButtonVisible = true;
+const leftResults = document.getElementById("leftResults");
+const rightResults = document.getElementById("rightResults");
 
-  async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      });
+const leftSearch = document.getElementById("leftSearch");
+const rightSearch = document.getElementById("rightSearch");
 
-      video.srcObject = stream;
+const leftKeyboard = document.getElementById("leftKeyboard");
+const rightKeyboard = document.getElementById("rightKeyboard");
 
-      video.onloadedmetadata = () => {
-        setupCanvases();
-        statusText.textContent = "Camera ready. Tap middle button to capture blank glass.";
-      };
+const leftLetter = document.getElementById("leftLetter");
+const rightLetter = document.getElementById("rightLetter");
 
-    } catch (err) {
-      statusText.textContent = "Camera failed. Use HTTPS, localhost, or allow camera permission.";
-      alert("Camera error: " + err.message);
-    }
+const leftTyped = document.getElementById("leftTyped");
+const rightTyped = document.getElementById("rightTyped");
+
+const hud = document.getElementById("hud");
+
+let leftYT = null;
+let rightYT = null;
+let currentVideoId = "dQw4w9WgXcQ";
+let searchResults = [];
+
+window.onYouTubeIframeAPIReady = function(){};
+
+function createPlayers(){
+  if(!window.YT || !YT.Player){
+    setTimeout(createPlayers,300);
+    return;
   }
 
-  function setupCanvases() {
-    const w = video.videoWidth || 1280;
-    const h = video.videoHeight || 720;
+  leftYT = new YT.Player("leftPlayer", {
+    videoId: currentVideoId,
+    playerVars:{playsinline:1,controls:0,modestbranding:1,rel:0}
+  });
 
-    [blankCanvas, writtenCanvas, outputCanvas].forEach(canvas => {
-      canvas.width = w;
-      canvas.height = h;
-    });
+  rightYT = new YT.Player("rightPlayer", {
+    videoId: currentVideoId,
+    playerVars:{playsinline:1,controls:0,modestbranding:1,rel:0}
+  });
+}
+
+function playVideo(id){
+  currentVideoId = id;
+  if(leftYT && rightYT){
+    leftYT.loadVideoById(id);
+    rightYT.loadVideoById(id);
+    flashHud("Playing selected video");
+  }
+}
+
+function ytAction(action){
+  if(action === "keyboard"){
+    mode = "keyboard";
+    updateKeyboardHud();
+    flashHud("Keyboard mode");
+    return;
   }
 
-  function drawVideoToCanvas(canvas) {
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  if(action === "search"){
+    searchYouTube();
+    return;
   }
 
-  function middleCaptureAction() {
-    if (captureStep === 1) {
-      captureBlank();
-      captureStep = 2;
-      updateMiddleButtonText();
+  if(!leftYT || !rightYT) return;
+
+  if(action === "play"){
+    leftYT.playVideo();
+    rightYT.playVideo();
+  }
+
+  if(action === "pause"){
+    leftYT.pauseVideo();
+    rightYT.pauseVideo();
+  }
+
+  if(action === "back"){
+    const t = Math.max(0, leftYT.getCurrentTime() - 10);
+    leftYT.seekTo(t,true);
+    rightYT.seekTo(t,true);
+  }
+
+  if(action === "forward"){
+    const t = leftYT.getCurrentTime() + 10;
+    leftYT.seekTo(t,true);
+    rightYT.seekTo(t,true);
+  }
+}
+
+async function searchYouTube(){
+  if(!YOUTUBE_API_KEY || YOUTUBE_API_KEY.includes("PASTE")){
+    flashHud("Paste YouTube API key in code first");
+    return;
+  }
+
+  const q = typedText.trim();
+  if(!q){
+    flashHud("Type search first");
+    return;
+  }
+
+  flashHud("Searching YouTube...");
+
+  const url =
+    "https://www.googleapis.com/youtube/v3/search" +
+    "?part=snippet" +
+    "&type=video" +
+    "&maxResults=5" +
+    "&q=" + encodeURIComponent(q) +
+    "&key=" + encodeURIComponent(YOUTUBE_API_KEY);
+
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(data.error){
+      console.error(data.error);
+      flashHud("YouTube API error: " + data.error.message);
       return;
     }
 
-    if (captureStep === 2) {
-      captureWritten();
-      captureStep = 3;
-      updateMiddleButtonText();
+    searchResults = (data.items || []).map(item => ({
+      id: item.id.videoId,
+      title: item.snippet.title,
+      channel: item.snippet.channelTitle,
+      thumb: item.snippet.thumbnails.default.url
+    }));
+
+    renderResults();
+
+    if(searchResults[0]){
+      playVideo(searchResults[0].id);
+    }
+
+    flashHud("Results loaded");
+  }catch(e){
+    console.error(e);
+    flashHud("Search failed");
+  }
+}
+
+function renderResults(){
+  leftResults.innerHTML = "";
+  rightResults.innerHTML = "";
+
+  searchResults.forEach((r,i)=>{
+    const html = `
+      <div class="result hit" data-action="result-${i}">
+        <img src="${r.thumb}">
+        <div>
+          <div class="rTitle">${escapeHtml(r.title)}</div>
+          <div class="rChan">${escapeHtml(r.channel)}</div>
+        </div>
+      </div>
+    `;
+
+    leftResults.insertAdjacentHTML("beforeend", html);
+    rightResults.insertAdjacentHTML("beforeend", html);
+  });
+}
+
+function escapeHtml(str){
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+/* Gyro */
+let yaw=0,pitch=0,zeroYaw=null,zeroPitch=null;
+let panelWorldYaw=0,panelWorldPitch=0;
+let panelScreenX=0,panelScreenY=0;
+const PX_PER_DEG_X=22;
+const PX_PER_DEG_Y=20;
+
+function norm(d){
+  d%=360;
+  if(d>180)d-=360;
+  if(d<-180)d+=360;
+  return d;
+}
+
+function angleDiff(a,b){return norm(a-b)}
+
+function onOrientation(e){
+  const a=e.alpha??0;
+  const b=e.beta??0;
+
+  if(zeroYaw===null){
+    zeroYaw=a;
+    zeroPitch=b;
+    panelWorldYaw=0;
+    panelWorldPitch=0;
+  }
+
+  yaw=norm(a-zeroYaw);
+  pitch=norm(b-zeroPitch);
+}
+
+async function requestGyro(){
+  if(typeof DeviceOrientationEvent!=="undefined" &&
+     typeof DeviceOrientationEvent.requestPermission==="function"){
+    const res=await DeviceOrientationEvent.requestPermission();
+    if(res!=="granted") throw new Error("Gyro permission denied");
+  }
+  window.addEventListener("deviceorientation",onOrientation,true);
+}
+
+/* Camera */
+async function startCamera(){
+  const stream=await navigator.mediaDevices.getUserMedia({
+    video:{
+      facingMode:{ideal:"environment"},
+      width:{ideal:1280},
+      height:{ideal:720}
+    },
+    audio:false
+  });
+
+  hiddenVideo.srcObject=stream;
+  leftVideo.srcObject=stream;
+  rightVideo.srcObject=stream;
+
+  await hiddenVideo.play();
+  await leftVideo.play();
+  await rightVideo.play();
+}
+
+/* Hand */
+let handSeen=false;
+let cursorX=.5,cursorY=.5;
+
+let pinchIndex=false,pinchMiddle=false,pinchRing=false,pinchPinky=false;
+let prevIndex=false,prevMiddle=false,prevRing=false,prevPinky=false;
+
+let mode="cursor";
+let typedText="";
+
+let indexHoldStart=null;
+let longDone=false;
+
+let dragging=false;
+let dragStartX=0,dragStartY=0,dragStartYaw=0,dragStartPitch=0;
+
+let lastClick=0;
+let scrollGesture=false;
+
+const groups={
+  index:["A","B","C","D","E","F","BACKSPACE","SPACE"],
+  middle:["G","H","I","J","K","L","ENTER"],
+  ring:["M","N","O","P","Q","R","S"],
+  pinky:["T","U","V","W","X","Y","Z"]
+};
+
+let groupName="index";
+let group=groups.index;
+let letterIndex=0;
+let selectedLetter="A";
+let lastRelease=performance.now();
+let lockReady=false;
+
+function d3(a,b){
+  const dx=a.x-b.x,dy=a.y-b.y,dz=(a.z||0)-(b.z||0);
+  return Math.sqrt(dx*dx+dy*dy+dz*dz);
+}
+
+function fingerUp(lm,tip,pip){return lm[tip].y < lm[pip].y}
+
+function detectScrollGesture(lm){
+  const indexUp=fingerUp(lm,8,6);
+  const middleUp=fingerUp(lm,12,10);
+  const ringUp=fingerUp(lm,16,14);
+  const pinkyUp=fingerUp(lm,20,18);
+  return indexUp && middleUp && !ringUp && !pinkyUp;
+}
+
+async function startHands(){
+  const hands=new Hands({
+    locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands:1,
+    modelComplexity:0,
+    minDetectionConfidence:.55,
+    minTrackingConfidence:.55
+  });
+
+  hands.onResults(results=>{
+    if(!results.multiHandLandmarks || !results.multiHandLandmarks.length){
+      handSeen=false;
+      pinchIndex=pinchMiddle=pinchRing=pinchPinky=false;
       return;
     }
 
-    if (captureStep === 3) {
-      processBoard();
-      captureStep = 1;
-      updateMiddleButtonText();
-      return;
-    }
+    handSeen=true;
+    const lm=results.multiHandLandmarks[0];
+
+    const thumb=lm[4];
+    const index=lm[8];
+    const middle=lm[12];
+    const ring=lm[16];
+    const pinky=lm[20];
+
+    cursorX=middle.x;
+    cursorY=middle.y;
+
+    const TH=.055;
+    pinchIndex=d3(thumb,index)<TH;
+    pinchMiddle=d3(thumb,middle)<TH;
+    pinchRing=d3(thumb,ring)<TH;
+    pinchPinky=d3(thumb,pinky)<TH;
+
+    scrollGesture=detectScrollGesture(lm);
+  });
+
+  const cam=new Camera(hiddenVideo,{
+    onFrame:async()=>{await hands.send({image:hiddenVideo})},
+    width:640,
+    height:480
+  });
+
+  cam.start();
+}
+
+/* Pointer */
+function eyeSize(){return{w:window.innerWidth/2,h:window.innerHeight}}
+function cursorPx(){
+  const s=eyeSize();
+  return{x:cursorX*s.w,y:cursorY*s.h};
+}
+
+function setReticles(){
+  const p=cursorPx();
+
+  leftReticle.style.left=p.x+"px";
+  leftReticle.style.top=p.y+"px";
+  rightReticle.style.left=p.x+"px";
+  rightReticle.style.top=p.y+"px";
+
+  const any=pinchIndex||pinchMiddle||pinchRing||pinchPinky;
+  leftReticle.classList.toggle("pinching",any);
+  rightReticle.classList.toggle("pinching",any);
+}
+
+function rectInEye(el){
+  const r=el.getBoundingClientRect();
+  return{left:r.left,top:r.top,right:r.right,bottom:r.bottom};
+}
+
+function pointIn(p,r){
+  return p.x>=r.left && p.x<=r.right && p.y>=r.top && p.y<=r.bottom;
+}
+
+function hoveredAction(){
+  const p=cursorPx();
+  let found=null;
+
+  leftPanel.querySelectorAll("[data-action]").forEach(el=>{
+    const r=rectInEye(el);
+    const hit=pointIn(p,r);
+    el.classList.toggle("hover",hit);
+    if(hit) found=el.dataset.action;
+  });
+
+  return found;
+}
+
+function inDragZone(){return hoveredAction()==="drag"}
+
+/* Keyboard */
+function updateKeyboardHud(){
+  const active=mode==="keyboard";
+
+  leftKeyboard.classList.toggle("active",active);
+  rightKeyboard.classList.toggle("active",active);
+
+  leftLetter.textContent=selectedLetter;
+  rightLetter.textContent=selectedLetter;
+
+  const txt=typedText || "Search YouTube";
+  leftTyped.textContent=txt;
+  rightTyped.textContent=txt;
+  leftSearch.textContent=txt;
+  rightSearch.textContent=txt;
+}
+
+function switchGroup(name){
+  if(groupName!==name){
+    groupName=name;
+    group=groups[name];
+    letterIndex=0;
+    selectedLetter=group[0];
+  }else{
+    letterIndex=(letterIndex+1)%group.length;
+    selectedLetter=group[letterIndex];
   }
 
-  function updateMiddleButtonText() {
-    if (captureStep === 1) {
-      middleCaptureBtn.innerHTML = "Capture<br>Blank";
-    }
+  lastRelease=performance.now();
+  lockReady=true;
+  updateKeyboardHud();
+}
 
-    if (captureStep === 2) {
-      middleCaptureBtn.innerHTML = "Capture<br>Written";
-    }
+function commitLetter(){
+  const key=selectedLetter;
 
-    if (captureStep === 3) {
-      middleCaptureBtn.innerHTML = "Make<br>Board";
-    }
+  if(key==="BACKSPACE"){
+    typedText=typedText.slice(0,-1);
+  }else if(key==="SPACE"){
+    typedText+=" ";
+  }else if(key==="ENTER"){
+    searchYouTube();
+  }else{
+    typedText+=key;
   }
 
-  function toggleMiddleButton() {
-    middleButtonVisible = !middleButtonVisible;
+  updateKeyboardHud();
+  flashHud("Typed: "+key);
+}
 
-    if (middleButtonVisible) {
-      middleCaptureBtn.classList.remove("hidden");
-    } else {
-      middleCaptureBtn.classList.add("hidden");
-    }
+function handleKeyboard(now){
+  hoveredAction();
+
+  if(inDragZone()){
+    handleModeToggle(now);
+    return;
   }
 
-  function captureBlank() {
-    setupCanvases();
-    drawVideoToCanvas(blankCanvas);
-    hasBlank = true;
+  if(pinchIndex && !prevIndex) switchGroup("index");
+  if(pinchMiddle && !prevMiddle) switchGroup("middle");
+  if(pinchRing && !prevRing) switchGroup("ring");
+  if(pinchPinky && !prevPinky) switchGroup("pinky");
 
-    captureStep = 2;
-    updateMiddleButtonText();
+  const any=pinchIndex||pinchMiddle||pinchRing||pinchPinky;
+  const prevAny=prevIndex||prevMiddle||prevRing||prevPinky;
 
-    statusText.textContent = "Blank glass captured. Now write on the glass without moving camera.";
+  if(!any && prevAny){
+    lastRelease=now;
+    lockReady=true;
   }
 
-  function captureWritten() {
-    if (!hasBlank) {
-      alert("Capture blank glass first.");
-      return;
-    }
-
-    drawVideoToCanvas(writtenCanvas);
-    hasWritten = true;
-
-    captureStep = 3;
-    updateMiddleButtonText();
-
-    statusText.textContent = "Written glass captured. Now click Make Whiteboard.";
+  if(!any && lockReady && now-lastRelease>2000){
+    commitLetter();
+    lockReady=false;
+    lastRelease=now;
   }
 
-  function updateAndProcess() {
-    thresholdValue.textContent = thresholdSlider.value;
-    darkBoostValue.textContent = darkBoostSlider.value;
-    noiseValue.textContent = noiseSlider.value;
+  handleModeToggle(now);
+}
 
-    if (hasBlank && hasWritten) {
-      processBoard();
-    }
-  }
+/* Cursor */
+function handleCursor(now){
+  const action=hoveredAction();
 
-  function processBoard() {
-    if (!hasBlank || !hasWritten) {
-      alert("Capture both blank and written photos first.");
-      return;
-    }
-
-    const w = blankCanvas.width;
-    const h = blankCanvas.height;
-
-    const blankCtx = blankCanvas.getContext("2d");
-    const writtenCtx = writtenCanvas.getContext("2d");
-    const outputCtx = outputCanvas.getContext("2d");
-
-    const blankData = blankCtx.getImageData(0, 0, w, h);
-    const writtenData = writtenCtx.getImageData(0, 0, w, h);
-
-    const outputData = outputCtx.createImageData(w, h);
-
-    const threshold = parseInt(thresholdSlider.value);
-    const darkBoost = parseInt(darkBoostSlider.value);
-    const blackInk = document.getElementById("blackInk").checked;
-
-    let mask = new Uint8Array(w * h);
-
-    for (let i = 0; i < blankData.data.length; i += 4) {
-      const index = i / 4;
-
-      const br = blankData.data[i];
-      const bg = blankData.data[i + 1];
-      const bb = blankData.data[i + 2];
-
-      const wr = writtenData.data[i];
-      const wg = writtenData.data[i + 1];
-      const wb = writtenData.data[i + 2];
-
-      const blankGray = (br + bg + bb) / 3;
-      const writtenGray = (wr + wg + wb) / 3;
-
-      const diff =
-        Math.abs(wr - br) +
-        Math.abs(wg - bg) +
-        Math.abs(wb - bb);
-
-      const becameDarker = blankGray - writtenGray;
-
-      if (diff > threshold || becameDarker > darkBoost) {
-        mask[index] = 255;
-      } else {
-        mask[index] = 0;
+  if(pinchIndex && !prevIndex){
+    if(action==="drag"){
+      dragging=true;
+      dragStartX=cursorX;
+      dragStartY=cursorY;
+      dragStartYaw=panelWorldYaw;
+      dragStartPitch=panelWorldPitch;
+    }else if(action && now-lastClick>350){
+      if(action.startsWith("result-")){
+        const index=Number(action.split("-")[1]);
+        if(searchResults[index]) playVideo(searchResults[index].id);
+      }else{
+        ytAction(action);
       }
+      lastClick=now;
     }
-
-    mask = cleanNoise(mask, w, h, parseInt(noiseSlider.value));
-
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        let sourceX = x;
-
-        if (document.getElementById("mirrorOutput").checked) {
-          sourceX = w - x - 1;
-        }
-
-        const srcIndex = y * w + sourceX;
-        const outIndex = (y * w + x) * 4;
-
-        const isWriting = mask[srcIndex] > 0;
-
-        if (isWriting) {
-          if (blackInk) {
-            outputData.data[outIndex] = 0;
-            outputData.data[outIndex + 1] = 0;
-            outputData.data[outIndex + 2] = 0;
-          } else {
-            outputData.data[outIndex] = 124;
-            outputData.data[outIndex + 1] = 58;
-            outputData.data[outIndex + 2] = 237;
-          }
-        } else {
-          outputData.data[outIndex] = 255;
-          outputData.data[outIndex + 1] = 255;
-          outputData.data[outIndex + 2] = 255;
-        }
-
-        outputData.data[outIndex + 3] = 255;
-      }
-    }
-
-    outputCtx.putImageData(outputData, 0, 0);
-
-    statusText.textContent = "Whiteboard generated. Adjust sliders if detection is weak or noisy.";
   }
 
-  function cleanNoise(mask, w, h, strength) {
-    if (strength <= 0) return mask;
+  if(!pinchIndex) dragging=false;
 
-    let result = new Uint8Array(mask);
+  if(dragging){
+    const dx=cursorX-dragStartX;
+    const dy=cursorY-dragStartY;
+    panelWorldYaw=dragStartYaw+dx*75;
+    panelWorldPitch=dragStartPitch+dy*55;
+  }
 
-    for (let pass = 0; pass < strength; pass++) {
-      let temp = new Uint8Array(result);
-
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const index = y * w + x;
-
-          let count = 0;
-
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const nIndex = (y + dy) * w + (x + dx);
-              if (result[nIndex] > 0) count++;
-            }
-          }
-
-          if (count <= 2) {
-            temp[index] = 0;
-          }
-
-          if (count >= 5) {
-            temp[index] = 255;
-          }
-        }
-      }
-
-      result = temp;
+  if(scrollGesture && leftYT && rightYT && now-lastClick>500){
+    if(cursorY<.16){
+      const t=Math.max(0,leftYT.getCurrentTime()-10);
+      leftYT.seekTo(t,true);rightYT.seekTo(t,true);
+      flashHud("Scroll up: -10s");
+      lastClick=now;
     }
 
-    return result;
-  }
-
-  function saveWhiteboard() {
-    if (!hasBlank || !hasWritten) {
-      alert("Generate whiteboard first.");
-      return;
+    if(cursorY>.84){
+      const t=leftYT.getCurrentTime()+10;
+      leftYT.seekTo(t,true);rightYT.seekTo(t,true);
+      flashHud("Scroll down: +10s");
+      lastClick=now;
     }
-
-    const link = document.createElement("a");
-    link.download = "gla-board-whiteboard.png";
-    link.href = outputCanvas.toDataURL("image/png");
-    link.click();
   }
 
-  function resetAll() {
-    const canvases = [blankCanvas, writtenCanvas, outputCanvas];
+  handleModeToggle(now);
+}
 
-    canvases.forEach(canvas => {
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    });
-
-    hasBlank = false;
-    hasWritten = false;
-    captureStep = 1;
-    updateMiddleButtonText();
-
-    statusText.textContent = "Reset done. Tap middle button to capture blank glass again.";
+function handleModeToggle(now){
+  if(inDragZone()){
+    indexHoldStart=null;
+    longDone=false;
+    return;
   }
 
-  startCamera();
+  if(pinchIndex){
+    if(indexHoldStart===null) indexHoldStart=now;
+
+    if(!longDone && now-indexHoldStart>3000){
+      mode=mode==="cursor" ? "keyboard" : "cursor";
+      longDone=true;
+      updateKeyboardHud();
+      flashHud(mode==="keyboard" ? "Keyboard mode" : "Cursor mode");
+    }
+  }else{
+    indexHoldStart=null;
+    longDone=false;
+  }
+}
+
+/* Panel */
+function updatePanel(){
+  const s=eyeSize();
+
+  const dx=angleDiff(panelWorldYaw,yaw);
+  const dy=angleDiff(panelWorldPitch,pitch);
+
+  panelScreenX=s.w/2+dx*PX_PER_DEG_X;
+  panelScreenY=s.h/2+dy*PX_PER_DEG_Y;
+
+  leftPanel.style.left=panelScreenX+"px";
+  leftPanel.style.top=panelScreenY+"px";
+  rightPanel.style.left=panelScreenX+"px";
+  rightPanel.style.top=panelScreenY+"px";
+
+  const color=dragging ? "#ffeb00" : "rgba(0,255,255,.75)";
+  leftPanel.style.borderColor=color;
+  rightPanel.style.borderColor=color;
+}
+
+/* HUD */
+let hudMsg="";
+let hudUntil=0;
+
+function flashHud(msg){
+  hudMsg=msg;
+  hudUntil=performance.now()+1800;
+}
+
+function updateHud(now){
+  if(now<hudUntil){
+    hud.textContent=hudMsg;
+    return;
+  }
+
+  hud.textContent =
+    `Mode: ${mode.toUpperCase()} | `+
+    `Hand: ${handSeen?"YES":"NO"} | `+
+    `Pinch: ${pinchIndex?"INDEX":"-"} | `+
+    `Yaw: ${yaw.toFixed(1)}°`;
+}
+
+function savePrev(){
+  prevIndex=pinchIndex;
+  prevMiddle=pinchMiddle;
+  prevRing=pinchRing;
+  prevPinky=pinchPinky;
+}
+
+function loop(now){
+  setReticles();
+  updatePanel();
+
+  if(mode==="cursor"){
+    leftKeyboard.classList.remove("active");
+    rightKeyboard.classList.remove("active");
+    handleCursor(now);
+  }else{
+    handleKeyboard(now);
+  }
+
+  updateHud(now);
+  savePrev();
+  requestAnimationFrame(loop);
+}
+
+/* Start */
+async function fullscreen(){
+  const el=document.documentElement;
+  if(el.requestFullscreen) await el.requestFullscreen().catch(()=>{});
+  if(screen.orientation && screen.orientation.lock){
+    await screen.orientation.lock("landscape").catch(()=>{});
+  }
+}
+
+startBtn.onclick=async()=>{
+  try{
+    startBtn.textContent="STARTING...";
+    await fullscreen();
+    await requestGyro();
+    await startCamera();
+
+    startScreen.style.display="none";
+    app.style.display="block";
+
+    createPlayers();
+    await startHands();
+
+    updateKeyboardHud();
+    flashHud("Cursor mode. Click KEY or hold index pinch 3 sec.");
+    requestAnimationFrame(loop);
+  }catch(e){
+    console.error(e);
+    alert("Error: "+e.message);
+    startBtn.textContent="START FULLSCREEN VR";
+  }
+};
 </script>
 
 </body>
