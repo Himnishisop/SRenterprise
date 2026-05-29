@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>VR YouTube Gesture Search - Gyro Fixed</title>
+<title>VR YouTube Gesture Search - Final</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
@@ -60,7 +60,7 @@ button{border:0;border-radius:14px;padding:13px 16px;font-weight:900;color:white
 <div id="start">
   <div class="box">
     <h1>VR YouTube Gesture Search</h1>
-    <p>Camera VR, fixed gyro Y-axis, YouTube search, smoother MediaPipe pointer, pinch click, drag zone, and finger keyboard.</p>
+    <p>Final version: inverted X, camera-style Y tilt, YouTube search, smoother MediaPipe, pinch click, drag zone, and finger keyboard.</p>
     <button id="startBtn">START FULLSCREEN VR</button>
     <p style="font-size:12px;color:#ffdf8a">Put phone sideways in Cardboard after starting.</p>
   </div>
@@ -149,10 +149,6 @@ button{border:0;border-radius:14px;padding:13px 16px;font-weight:900;color:white
 
 <script>
 const YOUTUBE_API_KEY = "AIzaSyBW9ylko1FTzfvco2NShiRE4lkI29fP7tc";
-
-/* =========================
-   ELEMENTS
-========================= */
 
 const startBtn = document.getElementById("startBtn");
 const startScreen = document.getElementById("start");
@@ -344,7 +340,7 @@ function escapeHtml(str){
 }
 
 /* =========================
-   FIXED GYRO
+   GYRO + MOTION TILT
 ========================= */
 
 let yaw = 0;
@@ -365,8 +361,13 @@ let panelScreenY = 0;
 const PX_PER_DEG_X = 22;
 const PX_PER_DEG_Y = 20;
 
-// flip this if Y feels inverted
+// X is already inverted in updatePanel.
+// Change this if Y feels opposite.
 const INVERT_Y_AXIS = false;
+
+// This selects which gravity formula feels correct.
+// 0 = atan2(gy, gz), 1 = atan2(-gx, gz), 2 = atan2(gz, gy)
+const PITCH_MODE = 0;
 
 function normalizeDeg(deg){
   deg = deg % 360;
@@ -384,35 +385,57 @@ function lerpAngle(current,target,amount){
   return normalizeDeg(current + diff * amount);
 }
 
+function radToDeg(r){
+  return r * 180 / Math.PI;
+}
+
 function onOrientation(e){
   const alpha = e.alpha ?? 0;
-  const beta = e.beta ?? 0;
-
-  // alpha = horizontal rotation
-  // beta = front/back tilt, better for "camera looking up/down"
-  const rawYaw = alpha;
-  const rawPitch = beta;
 
   if(zeroYaw === null){
-    zeroYaw = rawYaw;
-    zeroPitch = rawPitch;
-    smoothYaw = 0;
-    smoothPitch = 0;
+    zeroYaw = alpha;
     panelWorldYaw = 0;
     panelWorldPitch = 0;
   }
 
-  const targetYaw = normalizeDeg(rawYaw - zeroYaw);
+  const targetYaw = normalizeDeg(alpha - zeroYaw);
+
+  smoothYaw = lerpAngle(smoothYaw, targetYaw, 0.16);
+  yaw = smoothYaw;
+}
+
+function onMotion(e){
+  const g = e.accelerationIncludingGravity;
+  if(!g) return;
+
+  const gx = g.x ?? 0;
+  const gy = g.y ?? 0;
+  const gz = g.z ?? 0;
+
+  let rawPitch;
+
+  if(PITCH_MODE === 0){
+    rawPitch = radToDeg(Math.atan2(gy, gz));
+  }else if(PITCH_MODE === 1){
+    rawPitch = radToDeg(Math.atan2(-gx, gz));
+  }else{
+    rawPitch = radToDeg(Math.atan2(gz, gy));
+  }
+
+  rawPitch = normalizeDeg(rawPitch);
+
+  if(zeroPitch === null){
+    zeroPitch = rawPitch;
+    smoothPitch = 0;
+  }
+
   const targetPitch = normalizeDeg(rawPitch - zeroPitch);
 
-  smoothYaw = lerpAngle(smoothYaw, targetYaw, 0.18);
   smoothPitch = lerpAngle(smoothPitch, targetPitch, 0.18);
-
-  yaw = smoothYaw;
   pitch = smoothPitch;
 }
 
-async function requestGyro(){
+async function requestSensors(){
   if(
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function"
@@ -421,7 +444,16 @@ async function requestGyro(){
     if(res !== "granted") throw new Error("Gyro permission denied");
   }
 
+  if(
+    typeof DeviceMotionEvent !== "undefined" &&
+    typeof DeviceMotionEvent.requestPermission === "function"
+  ){
+    const res2 = await DeviceMotionEvent.requestPermission();
+    if(res2 !== "granted") throw new Error("Motion permission denied");
+  }
+
   window.addEventListener("deviceorientation", onOrientation, true);
+  window.addEventListener("devicemotion", onMotion, true);
 }
 
 /* =========================
@@ -532,7 +564,7 @@ async function startHands(){
 
   let busy = false;
   let lastRun = 0;
-  const TARGET_INTERVAL = 66; // ~15 FPS hand tracking
+  const TARGET_INTERVAL = 66;
 
   hands.onResults(results=>{
     if(!results.multiHandLandmarks || !results.multiHandLandmarks.length){
@@ -825,7 +857,8 @@ function updatePanel(){
   const dx = angleDiff(panelWorldYaw,yaw);
   const dy = angleDiff(panelWorldPitch,pitch);
 
-  panelScreenX = s.w/2 + dx * PX_PER_DEG_X;
+  // X inverted here.
+  panelScreenX = s.w/2 - dx * PX_PER_DEG_X;
 
   if(INVERT_Y_AXIS){
     panelScreenY = s.h/2 - dy * PX_PER_DEG_Y;
@@ -866,7 +899,7 @@ function updateHud(now){
     `Mode: ${mode.toUpperCase()} | ` +
     `Hand: ${handSeen ? "YES" : "NO"} | ` +
     `Pinch: ${pinchIndex ? "INDEX" : "-"} | ` +
-    `Yaw: ${yaw.toFixed(1)}° | Pitch: ${pitch.toFixed(1)}°`;
+    `Yaw: ${yaw.toFixed(1)}° | Pitch: ${pitch.toFixed(1)}° | PMode: ${PITCH_MODE}`;
 }
 
 function savePrev(){
@@ -919,7 +952,7 @@ startBtn.onclick = async()=>{
     startBtn.textContent = "STARTING...";
 
     await fullscreen();
-    await requestGyro();
+    await requestSensors();
     await startCamera();
 
     startScreen.style.display = "none";
