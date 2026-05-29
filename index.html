@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>VR YouTube Gesture Search</title>
+<title>VR YouTube Gesture Search - Gyro Fixed</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <style>
@@ -61,7 +60,7 @@ button{border:0;border-radius:14px;padding:13px 16px;font-weight:900;color:white
 <div id="start">
   <div class="box">
     <h1>VR YouTube Gesture Search</h1>
-    <p>Proper YouTube search, VR camera passthrough, gyro panel, MediaPipe pointer, pinch click, and finger keyboard.</p>
+    <p>Camera VR, fixed gyro Y-axis, YouTube search, smoother MediaPipe pointer, pinch click, drag zone, and finger keyboard.</p>
     <button id="startBtn">START FULLSCREEN VR</button>
     <p style="font-size:12px;color:#ffdf8a">Put phone sideways in Cardboard after starting.</p>
   </div>
@@ -151,6 +150,10 @@ button{border:0;border-radius:14px;padding:13px 16px;font-weight:900;color:white
 <script>
 const YOUTUBE_API_KEY = "AIzaSyBW9ylko1FTzfvco2NShiRE4lkI29fP7tc";
 
+/* =========================
+   ELEMENTS
+========================= */
+
 const startBtn = document.getElementById("startBtn");
 const startScreen = document.getElementById("start");
 const app = document.getElementById("app");
@@ -182,6 +185,10 @@ const rightTyped = document.getElementById("rightTyped");
 
 const hud = document.getElementById("hud");
 
+/* =========================
+   YOUTUBE
+========================= */
+
 let leftYT = null;
 let rightYT = null;
 let currentVideoId = "dQw4w9WgXcQ";
@@ -208,6 +215,7 @@ function createPlayers(){
 
 function playVideo(id){
   currentVideoId = id;
+
   if(leftYT && rightYT){
     leftYT.loadVideoById(id);
     rightYT.loadVideoById(id);
@@ -241,7 +249,7 @@ function ytAction(action){
   }
 
   if(action === "back"){
-    const t = Math.max(0, leftYT.getCurrentTime() - 10);
+    const t = Math.max(0,leftYT.getCurrentTime() - 10);
     leftYT.seekTo(t,true);
     rightYT.seekTo(t,true);
   }
@@ -260,6 +268,7 @@ async function searchYouTube(){
   }
 
   const q = typedText.trim();
+
   if(!q){
     flashHud("Type search first");
     return;
@@ -334,256 +343,363 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 
-/* Gyro */
-let yaw=0,pitch=0,zeroYaw=null,zeroPitch=null;
-let panelWorldYaw=0,panelWorldPitch=0;
-let panelScreenX=0,panelScreenY=0;
-const PX_PER_DEG_X=22;
-const PX_PER_DEG_Y=20;
+/* =========================
+   FIXED GYRO
+========================= */
 
-function norm(d){
-  d%=360;
-  if(d>180)d-=360;
-  if(d<-180)d+=360;
-  return d;
+let yaw = 0;
+let pitch = 0;
+
+let zeroYaw = null;
+let zeroPitch = null;
+
+let smoothYaw = 0;
+let smoothPitch = 0;
+
+let panelWorldYaw = 0;
+let panelWorldPitch = 0;
+
+let panelScreenX = 0;
+let panelScreenY = 0;
+
+const PX_PER_DEG_X = 22;
+const PX_PER_DEG_Y = 20;
+
+// flip this if Y feels inverted
+const INVERT_Y_AXIS = false;
+
+function normalizeDeg(deg){
+  deg = deg % 360;
+  if(deg > 180) deg -= 360;
+  if(deg < -180) deg += 360;
+  return deg;
 }
 
-function angleDiff(a,b){return norm(a-b)}
+function angleDiff(a,b){
+  return normalizeDeg(a-b);
+}
+
+function lerpAngle(current,target,amount){
+  const diff = normalizeDeg(target-current);
+  return normalizeDeg(current + diff * amount);
+}
 
 function onOrientation(e){
-  const a=e.alpha??0;
-  const b=e.beta??0;
+  const alpha = e.alpha ?? 0;
+  const beta = e.beta ?? 0;
 
-  if(zeroYaw===null){
-    zeroYaw=a;
-    zeroPitch=b;
-    panelWorldYaw=0;
-    panelWorldPitch=0;
+  // alpha = horizontal rotation
+  // beta = front/back tilt, better for "camera looking up/down"
+  const rawYaw = alpha;
+  const rawPitch = beta;
+
+  if(zeroYaw === null){
+    zeroYaw = rawYaw;
+    zeroPitch = rawPitch;
+    smoothYaw = 0;
+    smoothPitch = 0;
+    panelWorldYaw = 0;
+    panelWorldPitch = 0;
   }
 
-  yaw=norm(a-zeroYaw);
-  pitch=norm(b-zeroPitch);
+  const targetYaw = normalizeDeg(rawYaw - zeroYaw);
+  const targetPitch = normalizeDeg(rawPitch - zeroPitch);
+
+  smoothYaw = lerpAngle(smoothYaw, targetYaw, 0.18);
+  smoothPitch = lerpAngle(smoothPitch, targetPitch, 0.18);
+
+  yaw = smoothYaw;
+  pitch = smoothPitch;
 }
 
 async function requestGyro(){
-  if(typeof DeviceOrientationEvent!=="undefined" &&
-     typeof DeviceOrientationEvent.requestPermission==="function"){
-    const res=await DeviceOrientationEvent.requestPermission();
-    if(res!=="granted") throw new Error("Gyro permission denied");
+  if(
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function"
+  ){
+    const res = await DeviceOrientationEvent.requestPermission();
+    if(res !== "granted") throw new Error("Gyro permission denied");
   }
-  window.addEventListener("deviceorientation",onOrientation,true);
+
+  window.addEventListener("deviceorientation", onOrientation, true);
 }
 
-/* Camera */
+/* =========================
+   CAMERA
+========================= */
+
 async function startCamera(){
-  const stream=await navigator.mediaDevices.getUserMedia({
+  const stream = await navigator.mediaDevices.getUserMedia({
     video:{
       facingMode:{ideal:"environment"},
-      width:{ideal:1280},
-      height:{ideal:720}
+      width:{ideal:640},
+      height:{ideal:480},
+      frameRate:{ideal:24,max:30}
     },
     audio:false
   });
 
-  hiddenVideo.srcObject=stream;
-  leftVideo.srcObject=stream;
-  rightVideo.srcObject=stream;
+  hiddenVideo.srcObject = stream;
+  leftVideo.srcObject = stream;
+  rightVideo.srcObject = stream;
 
   await hiddenVideo.play();
   await leftVideo.play();
   await rightVideo.play();
 }
 
-/* Hand */
-let handSeen=false;
-let cursorX=.5,cursorY=.5;
+/* =========================
+   HAND TRACKING
+========================= */
 
-let pinchIndex=false,pinchMiddle=false,pinchRing=false,pinchPinky=false;
-let prevIndex=false,prevMiddle=false,prevRing=false,prevPinky=false;
+let handSeen = false;
 
-let mode="cursor";
-let typedText="";
+let cursorX = .5;
+let cursorY = .5;
 
-let indexHoldStart=null;
-let longDone=false;
+let pinchIndex = false;
+let pinchMiddle = false;
+let pinchRing = false;
+let pinchPinky = false;
 
-let dragging=false;
-let dragStartX=0,dragStartY=0,dragStartYaw=0,dragStartPitch=0;
+let prevIndex = false;
+let prevMiddle = false;
+let prevRing = false;
+let prevPinky = false;
 
-let lastClick=0;
-let scrollGesture=false;
+let mode = "cursor";
 
-const groups={
+let typedText = "";
+
+let indexHoldStart = null;
+let longDone = false;
+
+let dragging = false;
+
+let dragStartX = 0;
+let dragStartY = 0;
+let dragStartYaw = 0;
+let dragStartPitch = 0;
+
+let lastClick = 0;
+let scrollGesture = false;
+
+const groups = {
   index:["A","B","C","D","E","F","BACKSPACE","SPACE"],
   middle:["G","H","I","J","K","L","ENTER"],
   ring:["M","N","O","P","Q","R","S"],
   pinky:["T","U","V","W","X","Y","Z"]
 };
 
-let groupName="index";
-let group=groups.index;
-let letterIndex=0;
-let selectedLetter="A";
-let lastRelease=performance.now();
-let lockReady=false;
+let groupName = "index";
+let group = groups.index;
+let letterIndex = 0;
+let selectedLetter = "A";
+let lastRelease = performance.now();
+let lockReady = false;
 
 function d3(a,b){
-  const dx=a.x-b.x,dy=a.y-b.y,dz=(a.z||0)-(b.z||0);
-  return Math.sqrt(dx*dx+dy*dy+dz*dz);
+  const dx = a.x-b.x;
+  const dy = a.y-b.y;
+  const dz = (a.z || 0) - (b.z || 0);
+  return Math.sqrt(dx*dx + dy*dy + dz*dz);
 }
 
-function fingerUp(lm,tip,pip){return lm[tip].y < lm[pip].y}
+function fingerUp(lm,tip,pip){
+  return lm[tip].y < lm[pip].y;
+}
 
 function detectScrollGesture(lm){
-  const indexUp=fingerUp(lm,8,6);
-  const middleUp=fingerUp(lm,12,10);
-  const ringUp=fingerUp(lm,16,14);
-  const pinkyUp=fingerUp(lm,20,18);
+  const indexUp = fingerUp(lm,8,6);
+  const middleUp = fingerUp(lm,12,10);
+  const ringUp = fingerUp(lm,16,14);
+  const pinkyUp = fingerUp(lm,20,18);
+
   return indexUp && middleUp && !ringUp && !pinkyUp;
 }
 
 async function startHands(){
-  const hands=new Hands({
-    locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  const hands = new Hands({
+    locateFile:file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
   });
 
   hands.setOptions({
     maxNumHands:1,
     modelComplexity:0,
-    minDetectionConfidence:.55,
-    minTrackingConfidence:.55
+    minDetectionConfidence:.45,
+    minTrackingConfidence:.45
   });
+
+  let busy = false;
+  let lastRun = 0;
+  const TARGET_INTERVAL = 66; // ~15 FPS hand tracking
 
   hands.onResults(results=>{
     if(!results.multiHandLandmarks || !results.multiHandLandmarks.length){
-      handSeen=false;
-      pinchIndex=pinchMiddle=pinchRing=pinchPinky=false;
+      handSeen = false;
+      pinchIndex = pinchMiddle = pinchRing = pinchPinky = false;
       return;
     }
 
-    handSeen=true;
-    const lm=results.multiHandLandmarks[0];
+    handSeen = true;
 
-    const thumb=lm[4];
-    const index=lm[8];
-    const middle=lm[12];
-    const ring=lm[16];
-    const pinky=lm[20];
+    const lm = results.multiHandLandmarks[0];
 
-    cursorX=middle.x;
-    cursorY=middle.y;
+    const thumb = lm[4];
+    const index = lm[8];
+    const middle = lm[12];
+    const ring = lm[16];
+    const pinky = lm[20];
 
-    const TH=.055;
-    pinchIndex=d3(thumb,index)<TH;
-    pinchMiddle=d3(thumb,middle)<TH;
-    pinchRing=d3(thumb,ring)<TH;
-    pinchPinky=d3(thumb,pinky)<TH;
+    const POINTER_SMOOTH = 0.35;
+    cursorX = cursorX + (middle.x - cursorX) * POINTER_SMOOTH;
+    cursorY = cursorY + (middle.y - cursorY) * POINTER_SMOOTH;
 
-    scrollGesture=detectScrollGesture(lm);
+    const TH = .06;
+
+    pinchIndex = d3(thumb,index) < TH;
+    pinchMiddle = d3(thumb,middle) < TH;
+    pinchRing = d3(thumb,ring) < TH;
+    pinchPinky = d3(thumb,pinky) < TH;
+
+    scrollGesture = detectScrollGesture(lm);
   });
 
-  const cam=new Camera(hiddenVideo,{
-    onFrame:async()=>{await hands.send({image:hiddenVideo})},
-    width:640,
-    height:480
-  });
+  async function handLoop(now){
+    if(!busy && now - lastRun > TARGET_INTERVAL && hiddenVideo.readyState >= 2){
+      busy = true;
+      lastRun = now;
 
-  cam.start();
+      try{
+        await hands.send({image:hiddenVideo});
+      }catch(e){
+        console.warn(e);
+      }
+
+      busy = false;
+    }
+
+    requestAnimationFrame(handLoop);
+  }
+
+  requestAnimationFrame(handLoop);
 }
 
-/* Pointer */
-function eyeSize(){return{w:window.innerWidth/2,h:window.innerHeight}}
+/* =========================
+   POINTER / HIT TEST
+========================= */
+
+function eyeSize(){
+  return {w:window.innerWidth/2,h:window.innerHeight};
+}
+
 function cursorPx(){
-  const s=eyeSize();
-  return{x:cursorX*s.w,y:cursorY*s.h};
+  const s = eyeSize();
+  return {x:cursorX*s.w,y:cursorY*s.h};
 }
 
 function setReticles(){
-  const p=cursorPx();
+  const p = cursorPx();
 
-  leftReticle.style.left=p.x+"px";
-  leftReticle.style.top=p.y+"px";
-  rightReticle.style.left=p.x+"px";
-  rightReticle.style.top=p.y+"px";
+  leftReticle.style.left = p.x + "px";
+  leftReticle.style.top = p.y + "px";
 
-  const any=pinchIndex||pinchMiddle||pinchRing||pinchPinky;
+  rightReticle.style.left = p.x + "px";
+  rightReticle.style.top = p.y + "px";
+
+  const any = pinchIndex || pinchMiddle || pinchRing || pinchPinky;
+
   leftReticle.classList.toggle("pinching",any);
   rightReticle.classList.toggle("pinching",any);
 }
 
 function rectInEye(el){
-  const r=el.getBoundingClientRect();
-  return{left:r.left,top:r.top,right:r.right,bottom:r.bottom};
+  const r = el.getBoundingClientRect();
+  return {
+    left:r.left,
+    top:r.top,
+    right:r.right,
+    bottom:r.bottom
+  };
 }
 
 function pointIn(p,r){
-  return p.x>=r.left && p.x<=r.right && p.y>=r.top && p.y<=r.bottom;
+  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
 function hoveredAction(){
-  const p=cursorPx();
-  let found=null;
+  const p = cursorPx();
+  let found = null;
 
   leftPanel.querySelectorAll("[data-action]").forEach(el=>{
-    const r=rectInEye(el);
-    const hit=pointIn(p,r);
+    const r = rectInEye(el);
+    const hit = pointIn(p,r);
+
     el.classList.toggle("hover",hit);
-    if(hit) found=el.dataset.action;
+
+    if(hit) found = el.dataset.action;
   });
 
   return found;
 }
 
-function inDragZone(){return hoveredAction()==="drag"}
+function inDragZone(){
+  return hoveredAction() === "drag";
+}
 
-/* Keyboard */
+/* =========================
+   KEYBOARD
+========================= */
+
 function updateKeyboardHud(){
-  const active=mode==="keyboard";
+  const active = mode === "keyboard";
 
   leftKeyboard.classList.toggle("active",active);
   rightKeyboard.classList.toggle("active",active);
 
-  leftLetter.textContent=selectedLetter;
-  rightLetter.textContent=selectedLetter;
+  leftLetter.textContent = selectedLetter;
+  rightLetter.textContent = selectedLetter;
 
-  const txt=typedText || "Search YouTube";
-  leftTyped.textContent=txt;
-  rightTyped.textContent=txt;
-  leftSearch.textContent=txt;
-  rightSearch.textContent=txt;
+  const txt = typedText || "Search YouTube";
+
+  leftTyped.textContent = txt;
+  rightTyped.textContent = txt;
+
+  leftSearch.textContent = txt;
+  rightSearch.textContent = txt;
 }
 
 function switchGroup(name){
-  if(groupName!==name){
-    groupName=name;
-    group=groups[name];
-    letterIndex=0;
-    selectedLetter=group[0];
+  if(groupName !== name){
+    groupName = name;
+    group = groups[name];
+    letterIndex = 0;
+    selectedLetter = group[0];
   }else{
-    letterIndex=(letterIndex+1)%group.length;
-    selectedLetter=group[letterIndex];
+    letterIndex = (letterIndex + 1) % group.length;
+    selectedLetter = group[letterIndex];
   }
 
-  lastRelease=performance.now();
-  lockReady=true;
+  lastRelease = performance.now();
+  lockReady = true;
   updateKeyboardHud();
 }
 
 function commitLetter(){
-  const key=selectedLetter;
+  const key = selectedLetter;
 
-  if(key==="BACKSPACE"){
-    typedText=typedText.slice(0,-1);
-  }else if(key==="SPACE"){
-    typedText+=" ";
-  }else if(key==="ENTER"){
+  if(key === "BACKSPACE"){
+    typedText = typedText.slice(0,-1);
+  }else if(key === "SPACE"){
+    typedText += " ";
+  }else if(key === "ENTER"){
     searchYouTube();
   }else{
-    typedText+=key;
+    typedText += key;
   }
 
   updateKeyboardHud();
-  flashHud("Typed: "+key);
+  flashHud("Typed: " + key);
 }
 
 function handleKeyboard(now){
@@ -599,67 +715,76 @@ function handleKeyboard(now){
   if(pinchRing && !prevRing) switchGroup("ring");
   if(pinchPinky && !prevPinky) switchGroup("pinky");
 
-  const any=pinchIndex||pinchMiddle||pinchRing||pinchPinky;
-  const prevAny=prevIndex||prevMiddle||prevRing||prevPinky;
+  const any = pinchIndex || pinchMiddle || pinchRing || pinchPinky;
+  const prevAny = prevIndex || prevMiddle || prevRing || prevPinky;
 
   if(!any && prevAny){
-    lastRelease=now;
-    lockReady=true;
+    lastRelease = now;
+    lockReady = true;
   }
 
-  if(!any && lockReady && now-lastRelease>2000){
+  if(!any && lockReady && now - lastRelease > 2000){
     commitLetter();
-    lockReady=false;
-    lastRelease=now;
+    lockReady = false;
+    lastRelease = now;
   }
 
   handleModeToggle(now);
 }
 
-/* Cursor */
+/* =========================
+   CURSOR
+========================= */
+
 function handleCursor(now){
-  const action=hoveredAction();
+  const action = hoveredAction();
 
   if(pinchIndex && !prevIndex){
-    if(action==="drag"){
-      dragging=true;
-      dragStartX=cursorX;
-      dragStartY=cursorY;
-      dragStartYaw=panelWorldYaw;
-      dragStartPitch=panelWorldPitch;
-    }else if(action && now-lastClick>350){
+    if(action === "drag"){
+      dragging = true;
+      dragStartX = cursorX;
+      dragStartY = cursorY;
+      dragStartYaw = panelWorldYaw;
+      dragStartPitch = panelWorldPitch;
+    }else if(action && now - lastClick > 350){
       if(action.startsWith("result-")){
-        const index=Number(action.split("-")[1]);
+        const index = Number(action.split("-")[1]);
         if(searchResults[index]) playVideo(searchResults[index].id);
       }else{
         ytAction(action);
       }
-      lastClick=now;
+
+      lastClick = now;
     }
   }
 
-  if(!pinchIndex) dragging=false;
+  if(!pinchIndex){
+    dragging = false;
+  }
 
   if(dragging){
-    const dx=cursorX-dragStartX;
-    const dy=cursorY-dragStartY;
-    panelWorldYaw=dragStartYaw+dx*75;
-    panelWorldPitch=dragStartPitch+dy*55;
+    const dx = cursorX - dragStartX;
+    const dy = cursorY - dragStartY;
+
+    panelWorldYaw = dragStartYaw + dx * 75;
+    panelWorldPitch = dragStartPitch + dy * 55;
   }
 
-  if(scrollGesture && leftYT && rightYT && now-lastClick>500){
-    if(cursorY<.16){
-      const t=Math.max(0,leftYT.getCurrentTime()-10);
-      leftYT.seekTo(t,true);rightYT.seekTo(t,true);
+  if(scrollGesture && leftYT && rightYT && now - lastClick > 500){
+    if(cursorY < .16){
+      const t = Math.max(0,leftYT.getCurrentTime() - 10);
+      leftYT.seekTo(t,true);
+      rightYT.seekTo(t,true);
       flashHud("Scroll up: -10s");
-      lastClick=now;
+      lastClick = now;
     }
 
-    if(cursorY>.84){
-      const t=leftYT.getCurrentTime()+10;
-      leftYT.seekTo(t,true);rightYT.seekTo(t,true);
+    if(cursorY > .84){
+      const t = leftYT.getCurrentTime() + 10;
+      leftYT.seekTo(t,true);
+      rightYT.seekTo(t,true);
       flashHud("Scroll down: +10s");
-      lastClick=now;
+      lastClick = now;
     }
   }
 
@@ -668,80 +793,98 @@ function handleCursor(now){
 
 function handleModeToggle(now){
   if(inDragZone()){
-    indexHoldStart=null;
-    longDone=false;
+    indexHoldStart = null;
+    longDone = false;
     return;
   }
 
   if(pinchIndex){
-    if(indexHoldStart===null) indexHoldStart=now;
+    if(indexHoldStart === null){
+      indexHoldStart = now;
+    }
 
-    if(!longDone && now-indexHoldStart>3000){
-      mode=mode==="cursor" ? "keyboard" : "cursor";
-      longDone=true;
+    if(!longDone && now - indexHoldStart > 3000){
+      mode = mode === "cursor" ? "keyboard" : "cursor";
+      longDone = true;
       updateKeyboardHud();
-      flashHud(mode==="keyboard" ? "Keyboard mode" : "Cursor mode");
+      flashHud(mode === "keyboard" ? "Keyboard mode" : "Cursor mode");
     }
   }else{
-    indexHoldStart=null;
-    longDone=false;
+    indexHoldStart = null;
+    longDone = false;
   }
 }
 
-/* Panel */
+/* =========================
+   PANEL POSITION
+========================= */
+
 function updatePanel(){
-  const s=eyeSize();
+  const s = eyeSize();
 
-  const dx=angleDiff(panelWorldYaw,yaw);
-  const dy=angleDiff(panelWorldPitch,pitch);
+  const dx = angleDiff(panelWorldYaw,yaw);
+  const dy = angleDiff(panelWorldPitch,pitch);
 
-  panelScreenX=s.w/2+dx*PX_PER_DEG_X;
-  panelScreenY=s.h/2+dy*PX_PER_DEG_Y;
+  panelScreenX = s.w/2 + dx * PX_PER_DEG_X;
 
-  leftPanel.style.left=panelScreenX+"px";
-  leftPanel.style.top=panelScreenY+"px";
-  rightPanel.style.left=panelScreenX+"px";
-  rightPanel.style.top=panelScreenY+"px";
+  if(INVERT_Y_AXIS){
+    panelScreenY = s.h/2 - dy * PX_PER_DEG_Y;
+  }else{
+    panelScreenY = s.h/2 + dy * PX_PER_DEG_Y;
+  }
 
-  const color=dragging ? "#ffeb00" : "rgba(0,255,255,.75)";
-  leftPanel.style.borderColor=color;
-  rightPanel.style.borderColor=color;
+  leftPanel.style.left = panelScreenX + "px";
+  leftPanel.style.top = panelScreenY + "px";
+
+  rightPanel.style.left = panelScreenX + "px";
+  rightPanel.style.top = panelScreenY + "px";
+
+  const color = dragging ? "#ffeb00" : "rgba(0,255,255,.75)";
+  leftPanel.style.borderColor = color;
+  rightPanel.style.borderColor = color;
 }
 
-/* HUD */
-let hudMsg="";
-let hudUntil=0;
+/* =========================
+   HUD
+========================= */
+
+let hudMsg = "";
+let hudUntil = 0;
 
 function flashHud(msg){
-  hudMsg=msg;
-  hudUntil=performance.now()+1800;
+  hudMsg = msg;
+  hudUntil = performance.now() + 1800;
 }
 
 function updateHud(now){
-  if(now<hudUntil){
-    hud.textContent=hudMsg;
+  if(now < hudUntil){
+    hud.textContent = hudMsg;
     return;
   }
 
   hud.textContent =
-    `Mode: ${mode.toUpperCase()} | `+
-    `Hand: ${handSeen?"YES":"NO"} | `+
-    `Pinch: ${pinchIndex?"INDEX":"-"} | `+
-    `Yaw: ${yaw.toFixed(1)}°`;
+    `Mode: ${mode.toUpperCase()} | ` +
+    `Hand: ${handSeen ? "YES" : "NO"} | ` +
+    `Pinch: ${pinchIndex ? "INDEX" : "-"} | ` +
+    `Yaw: ${yaw.toFixed(1)}° | Pitch: ${pitch.toFixed(1)}°`;
 }
 
 function savePrev(){
-  prevIndex=pinchIndex;
-  prevMiddle=pinchMiddle;
-  prevRing=pinchRing;
-  prevPinky=pinchPinky;
+  prevIndex = pinchIndex;
+  prevMiddle = pinchMiddle;
+  prevRing = pinchRing;
+  prevPinky = pinchPinky;
 }
+
+/* =========================
+   MAIN LOOP
+========================= */
 
 function loop(now){
   setReticles();
   updatePanel();
 
-  if(mode==="cursor"){
+  if(mode === "cursor"){
     leftKeyboard.classList.remove("active");
     rightKeyboard.classList.remove("active");
     handleCursor(now);
@@ -751,38 +894,48 @@ function loop(now){
 
   updateHud(now);
   savePrev();
+
   requestAnimationFrame(loop);
 }
 
-/* Start */
+/* =========================
+   START
+========================= */
+
 async function fullscreen(){
-  const el=document.documentElement;
-  if(el.requestFullscreen) await el.requestFullscreen().catch(()=>{});
+  const el = document.documentElement;
+
+  if(el.requestFullscreen){
+    await el.requestFullscreen().catch(()=>{});
+  }
+
   if(screen.orientation && screen.orientation.lock){
     await screen.orientation.lock("landscape").catch(()=>{});
   }
 }
 
-startBtn.onclick=async()=>{
+startBtn.onclick = async()=>{
   try{
-    startBtn.textContent="STARTING...";
+    startBtn.textContent = "STARTING...";
+
     await fullscreen();
     await requestGyro();
     await startCamera();
 
-    startScreen.style.display="none";
-    app.style.display="block";
+    startScreen.style.display = "none";
+    app.style.display = "block";
 
     createPlayers();
     await startHands();
 
     updateKeyboardHud();
+
     flashHud("Cursor mode. Click KEY or hold index pinch 3 sec.");
     requestAnimationFrame(loop);
   }catch(e){
     console.error(e);
-    alert("Error: "+e.message);
-    startBtn.textContent="START FULLSCREEN VR";
+    alert("Error: " + e.message);
+    startBtn.textContent = "START FULLSCREEN VR";
   }
 };
 </script>
